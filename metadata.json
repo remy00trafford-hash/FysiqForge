@@ -1,0 +1,6 @@
+{
+  "name": "FysiqForge",
+  "description": "Plateforme SaaS de coaching musculation et fitness avec analyse photo par IA, coach virtuel personnalisé, musique de séance et paiements multi-devises.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
