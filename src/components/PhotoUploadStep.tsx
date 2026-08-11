@@ -174,9 +174,9 @@ export const PhotoUploadStep: React.FC<PhotoUploadStepProps> = ({
             <div className="space-y-3 pt-4 border-t border-white/10">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-400 font-semibold uppercase tracking-wider">
-                  Pas de photo sous la main ? Choisis un profil démo :
+                  Pas de photo sous la main ? Essaie avec une photo d'exemple (gratuit) :
                 </span>
-                <span className="text-[#FF5500] font-bold">1-Clic pour Tester</span>
+                <span className="text-[#FF5500] font-bold">Aucun paiement requis</span>
               </div>
 
               <div className="grid sm:grid-cols-3 gap-4">

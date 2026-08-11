@@ -82,6 +82,16 @@ export const WorkoutAudioPlayer: React.FC<WorkoutAudioPlayerProps> = ({ playlist
                 setCurrentTrackIdx((prev) => (prev + 1) % tracks.length);
               }
             }
+          },
+          onError: () => {
+            // Une vidéo qui ne peut pas être lue (embed désactivé, retirée, région bloquée...)
+            // ne doit jamais couper la musique silencieusement : on passe automatiquement
+            // à la piste suivante pour garder une écoute continue.
+            if (tracks.length > 1) {
+              setCurrentTrackIdx((prev) => (prev + 1) % tracks.length);
+            } else {
+              setIsPlaying(false);
+            }
           }
         }
       });
@@ -107,13 +117,20 @@ export const WorkoutAudioPlayer: React.FC<WorkoutAudioPlayerProps> = ({ playlist
     }
   }, [initPlayer]);
 
-  // Handle track video ID changes
+  // Handle track video ID changes — ignore le tout premier montage (déjà géré par initPlayer
+  // avec la bonne vidéo dès la création), pour éviter un double-chargement qui peut couper le son.
+  const isFirstMountRef = useRef(true);
   useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return;
+    }
     if (playerRef.current && typeof playerRef.current.loadVideoById === "function") {
       playerRef.current.loadVideoById(currentVideoId);
-      if (isPlaying) {
-        playerRef.current.playVideo();
-      }
+      // On relance toujours la lecture après un changement de piste — l'intention de
+      // l'utilisateur en changeant de musique est de continuer à écouter, pas de mettre en pause.
+      playerRef.current.playVideo();
+      setIsPlaying(true);
     }
   }, [currentVideoId]);
 

@@ -469,73 +469,69 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
   const sampleExercisesPush = [
     { name: "Bench Press / Développé Couché", muscleGroup: "Pectoraux", sets: 4, reps: "8 - 10 reps", restSeconds: 90, tips: "Resserre les omoplates et garde les pieds bien à plat au sol." },
     { name: "Incline Dumbbell Press", muscleGroup: "Pectoraux Supérieurs", sets: 4, reps: "10 - 12 reps", restSeconds: 75, tips: "Banc incliné à 30°. Accentue la contraction en haut." },
+    { name: "Dips aux Barres Parallèles", muscleGroup: "Pectoraux Inférieurs & Triceps", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Penche légèrement le buste en avant pour cibler les pectoraux." },
     { name: "Overhead Shoulder Press", muscleGroup: "Épaules", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Garde le buste gainé sans cambrer excessivement." },
+    { name: "Élévations Latérales Haltères", muscleGroup: "Deltoïdes Latéraux", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Légère flexion des coudes, monte jusqu'à l'horizontale seulement." },
+    { name: "Écarté Poulie Vis-à-Vis", muscleGroup: "Pectoraux (Isolation)", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Contraction maximale en fin de mouvement, coudes légèrement fléchis." },
     { name: "Triceps Pushdown", muscleGroup: "Triceps", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Coudes fixes le long du corps, extension complète." }
   ];
 
   const sampleExercisesPull = [
     { name: "Lat Pulldown / Tirage Vertical", muscleGroup: "Grand Dorsal", sets: 4, reps: "10 - 12 reps", restSeconds: 75, tips: "Tire la barre vers la poitrine en sortant la cage thoracique." },
     { name: "Bent Over Barbell Row", muscleGroup: "Milieu du Dos", sets: 4, reps: "8 - 10 reps", restSeconds: 90, tips: "Buste incliné à 45°, tire le poids vers le nombril." },
+    { name: "Tirage Horizontal Poulie Basse", muscleGroup: "Milieu du Dos & Trapèzes", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Garde le dos droit, tire les coudes vers l'arrière." },
+    { name: "Rowing Unilatéral Haltère", muscleGroup: "Grand Dorsal (Isolation)", sets: 3, reps: "10 - 12 reps par bras", restSeconds: 60, tips: "Évite de tourner le buste, tire le coude vers la hanche." },
     { name: "Face Pulls", muscleGroup: "Arrière d'Épaules & Trapèzes", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Tire la corde vers les yeux en écartant les poignets." },
-    { name: "Barbell Biceps Curl", muscleGroup: "Biceps", sets: 3, reps: "10 - 12 reps", restSeconds: 60, tips: "Garde les coudes collés aux flancs, pas de balancier." }
+    { name: "Barbell Biceps Curl", muscleGroup: "Biceps", sets: 3, reps: "10 - 12 reps", restSeconds: 60, tips: "Garde les coudes collés aux flancs, pas de balancier." },
+    { name: "Curl Marteau Haltères", muscleGroup: "Biceps & Avant-Bras", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Prise neutre, contrôle la phase descendante." }
   ];
 
   const sampleExercisesLegs = [
     { name: "Barbell Back Squat", muscleGroup: "Quadriceps & Fessiers", sets: 4, reps: "8 - 10 reps", restSeconds: 120, tips: "Genoux alignés avec les pointes de pieds, descente sous la parallèle." },
     { name: "Romanian Deadlift", muscleGroup: "Ischio-Jambiers & Fessiers", sets: 4, reps: "10 - 12 reps", restSeconds: 90, tips: "Pousse les fesses vers l'arrière, buste droit." },
     { name: "Leg Press / Presse à Cuisses", muscleGroup: "Quadriceps", sets: 3, reps: "12 - 15 reps", restSeconds: 75, tips: "Ne verrouille pas brutalement les genoux en haut." },
+    { name: "Fentes Marchées Haltères", muscleGroup: "Quadriceps & Fessiers (Unilatéral)", sets: 3, reps: "10 - 12 reps par jambe", restSeconds: 75, tips: "Genou avant aligné avec la cheville, buste droit." },
+    { name: "Leg Curl Allongé", muscleGroup: "Ischio-Jambiers (Isolation)", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Contraction complète en haut, évite de décoller le bassin." },
+    { name: "Mollets Debout à la Machine", muscleGroup: "Mollets", sets: 4, reps: "15 - 20 reps", restSeconds: 45, tips: "Amplitude complète, pause en haut de la contraction." },
     { name: "Plank / Gainage Abdominal", muscleGroup: "Abdominaux & Core", sets: 3, reps: "45-60 sec", restSeconds: 45, tips: "Rétroversion du bassin, contracte les fessiers et le transverse." }
   ];
 
-  const days = [
-    {
-      dayNumber: 1,
-      dayName: "Jour 1",
-      title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`,
-      focus: "Pectoraux & Triceps",
-      estimatedDurationMin: 50,
-      caloriesBurnedEst: 440,
-      exercises: sampleExercisesPush
-    },
-    {
-      dayNumber: 2,
-      dayName: "Jour 2",
-      title: "Dos, Biceps & Posture (Pull Titan)",
-      focus: "Grand Dorsal & Biceps",
-      estimatedDurationMin: 55,
-      caloriesBurnedEst: 460,
-      exercises: sampleExercisesPull
-    }
+  const sampleExercisesUpperIsolation = [
+    { name: "Développé Militaire Haltères", muscleGroup: "Épaules", sets: 4, reps: "8 - 10 reps", restSeconds: 90, tips: "Ne cambre pas le bas du dos, gaine le tronc." },
+    { name: "Tirage Nuque Poulie Haute", muscleGroup: "Grand Dorsal & Trapèzes", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Contrôle la descente, évite l'élan." },
+    { name: "Curl Pupitre Barre EZ", muscleGroup: "Biceps (Isolation Stricte)", sets: 3, reps: "10 - 12 reps", restSeconds: 60, tips: "Élimine toute triche, isole vraiment le biceps." },
+    { name: "Extension Triceps Barre au Front", muscleGroup: "Triceps (Longue Portion)", sets: 3, reps: "10 - 12 reps", restSeconds: 60, tips: "Coudes fixes, descends la barre vers le front en contrôle." },
+    { name: "Élévations Frontales Haltères", muscleGroup: "Deltoïdes Antérieurs", sets: 3, reps: "12 - 15 reps", restSeconds: 60, tips: "Alterne les bras ou monte ensemble, sans élan." },
+    { name: "Crunch Poulie Haute", muscleGroup: "Abdominaux Supérieurs", sets: 3, reps: "15 - 20 reps", restSeconds: 45, tips: "Enroule le buste vers le bas, ne tire pas avec les bras." }
   ];
 
-  if (numDays >= 3) {
-    days.push({
-      dayNumber: 3,
-      dayName: "Jour 3",
-      title: "Bas du Corps & Gainage (Legs Power)",
-      focus: "Quadriceps, Ischios & Abdominaux",
-      estimatedDurationMin: 50,
-      caloriesBurnedEst: 510,
-      exercises: sampleExercisesLegs
-    });
-  }
+  const sampleExercisesFullBody = [
+    { name: "Soulevé de Terre Roumain", muscleGroup: "Chaîne Postérieure Complète", sets: 4, reps: "8 - 10 reps", restSeconds: 100, tips: "Dos plat, la barre longe les jambes." },
+    { name: "Développé Couché Haltères", muscleGroup: "Pectoraux", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Amplitude complète, contrôle la descente." },
+    { name: "Squat Gobelet", muscleGroup: "Quadriceps & Fessiers", sets: 3, reps: "12 - 15 reps", restSeconds: 75, tips: "Garde le buste droit, talons ancrés au sol." },
+    { name: "Tirage Poitrine Poulie", muscleGroup: "Dos", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Contraction des omoplates en fin de mouvement." },
+    { name: "Développé Militaire Assis", muscleGroup: "Épaules", sets: 3, reps: "10 - 12 reps", restSeconds: 75, tips: "Gaine le tronc, pousse dans l'axe des épaules." },
+    { name: "Gainage Latéral", muscleGroup: "Obliques & Core", sets: 3, reps: "30-45 sec/côté", restSeconds: 45, tips: "Aligne épaule-hanche-cheville, ne laisse pas tomber le bassin." }
+  ];
 
-  if (numDays >= 4) {
-    days.push({
-      dayNumber: 4,
-      dayName: "Jour 4",
-      title: `Hypertrophie Ciblée (${targetZone})`,
-      focus: `${targetZone} & Isolation`,
-      estimatedDurationMin: 45,
-      caloriesBurnedEst: 420,
-      exercises: [
-        sampleExercisesPush[1],
-        sampleExercisesPull[0],
-        sampleExercisesPull[2],
-        sampleExercisesLegs[3]
-      ]
-    });
-  }
+  const dayTemplates = [
+    { title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`, focus: "Pectoraux & Triceps", exercises: sampleExercisesPush, duration: 50, cal: 440 },
+    { title: "Dos, Biceps & Posture (Pull Titan)", focus: "Grand Dorsal & Biceps", exercises: sampleExercisesPull, duration: 55, cal: 460 },
+    { title: "Bas du Corps & Gainage (Legs Power)", focus: "Quadriceps, Ischios & Abdominaux", exercises: sampleExercisesLegs, duration: 50, cal: 510 },
+    { title: `Hypertrophie Ciblée (${targetZone})`, focus: `${targetZone} & Isolation`, exercises: sampleExercisesUpperIsolation, duration: 45, cal: 420 },
+    { title: "Full Body Force & Métabolique", focus: "Corps Entier", exercises: sampleExercisesFullBody, duration: 48, cal: 480 },
+    { title: "Push/Pull Complémentaire & Core", focus: "Haut du Corps & Sangle Abdominale", exercises: [...sampleExercisesPush.slice(0, 3), ...sampleExercisesPull.slice(0, 3)], duration: 52, cal: 470 }
+  ];
+
+  const days = dayTemplates.slice(0, numDays).map((tpl, idx) => ({
+    dayNumber: idx + 1,
+    dayName: `Jour ${idx + 1}`,
+    title: tpl.title,
+    focus: tpl.focus,
+    estimatedDurationMin: tpl.duration,
+    caloriesBurnedEst: tpl.cal,
+    exercises: tpl.exercises
+  }));
 
   return {
     programTitle: `FORGE ATHLÉTIQUE - FOCUS ${targetZone.toUpperCase()}`,
@@ -580,6 +576,12 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
 app.post("/api/ai/generate-plan", async (req, res) => {
   const { tierId, userAnswers, analysis } = req.body;
 
+  // Détermine le nombre réel de jours d'entraînement attendus à partir de la fréquence choisie
+  const parsedFrequency = parseInt(String(userAnswers?.frequency || "").replace(/\D/g, ""), 10);
+  const numTrainingDays = Number.isFinite(parsedFrequency) && parsedFrequency > 0
+    ? Math.min(Math.max(parsedFrequency, 2), 6)
+    : 4;
+
   try {
     const ai = getGeminiClient();
 
@@ -605,6 +607,11 @@ CONSIGNES STRICTES :
 2. DIVERSITÉ & PAS DE RÉTRO-RÉPÉTITION D'EXERCICES IDENTIQUES D'UN JOUR À L'AUTRE : chaque jour de la semaine doit comporter des exercices distincts, ciblés et stimulants.
 3. LOGIQUE DE PROGRESSION MULTI-SEMAINES SUR 8 SEMAINES :
    Génère un tableau "weeksProgression" de 4 blocs de semaines (Semaines 1-2, 3-4, 5-6, 7-8) détaillant la surcharge progressive (augmentation des charges, variation des répétitions, RPE, tempo, technique d'intensité).
+4. VOLUME OBLIGATOIRE — RÈGLE NON NÉGOCIABLE POUR UN VRAI RÉSULTAT PHYSIQUE :
+   - Le tableau "weekSchedule" DOIT contenir EXACTEMENT ${numTrainingDays} jours d'entraînement complets (un objet par jour), correspondant à la fréquence demandée par l'utilisateur (${userAnswers?.frequency || "4 jours / sem"}). Ne génère JAMAIS moins de jours que cela.
+   - CHAQUE jour DOIT contenir ENTRE 6 ET 8 exercices minimum (jamais moins de 6), couvrant échauffement implicite + mouvements composés + isolation, pour constituer une vraie séance complète et efficace pour la transformation physique visée.
+   - Les groupes musculaires doivent être répartis intelligemment sur la semaine (ex: split Push/Pull/Legs, ou Haut/Bas du corps) selon le nombre de jours, sans jamais cibler deux fois le même groupe principal deux jours de suite (sauf si fréquence ≤ 3 jours et objectif full-body).
+   - Le total d'exercices sur la semaine doit refléter un vrai programme de musculation professionnel, pas une démo simplifiée.
 
 Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
 {
@@ -668,8 +675,13 @@ Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
           ],
           "alternativeExercise": "Exercice alternatif"
         }
+        // ⚠️ CONTINUE ICI avec 5 à 7 AUTRES OBJETS EXERCICE DIFFÉRENTS pour ce même Jour 1
+        // (id: "ex2", "ex3"... jusqu'à "ex6" ou "ex7" minimum). Ne t'arrête jamais à 1 seul exercice par jour.
       ]
     }
+    // ⚠️ CONTINUE ICI avec les jours suivants (dayNumber: 2, 3, 4...) jusqu'à obtenir
+    // EXACTEMENT ${numTrainingDays} objets "jour" au total dans ce tableau weekSchedule,
+    // chacun avec 6 à 8 exercices distincts comme le Jour 1 ci-dessus. C'est une exigence stricte.
   ]
 }`;
 
@@ -679,7 +691,8 @@ Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
           contents: prompt,
           config: {
             responseMimeType: "application/json",
-            temperature: 0.7
+            temperature: 0.7,
+            maxOutputTokens: 8192
           }
         });
 

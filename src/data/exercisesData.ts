@@ -383,6 +383,18 @@ export const MUSIC_PLAYLISTS: Record<string, MusicPlaylist> = {
         duration: "40:00",
         bpm: 132,
         youtubeVideoId: "Gno9Wvi6bIY"
+      },
+      {
+        title: "AFROBEATS MIX 2026 - Amapiano x Afrobeat Club Fusion",
+        duration: "50:00",
+        bpm: 126,
+        youtubeVideoId: "P_v7NwccAcE"
+      },
+      {
+        title: "Ultimate Afrobeats & Amapiano Mix 2026",
+        duration: "55:00",
+        bpm: 129,
+        youtubeVideoId: "vDEZZRaRfqo"
       }
     ]
   },
@@ -411,6 +423,18 @@ export const MUSIC_PLAYLISTS: Record<string, MusicPlaylist> = {
         duration: "42:00",
         bpm: 152,
         youtubeVideoId: "ezih7odzumg"
+      },
+      {
+        title: "Adrenaline Phonk Mix 2026 - Hardcore Workout Music",
+        duration: "45:00",
+        bpm: 150,
+        youtubeVideoId: "KwYuNSwW5k8"
+      },
+      {
+        title: "The Best Gym Phonk 2026 - Aggressive Playlist",
+        duration: "50:00",
+        bpm: 149,
+        youtubeVideoId: "RgWINzIe9HA"
       }
     ]
   },
@@ -439,6 +463,18 @@ export const MUSIC_PLAYLISTS: Record<string, MusicPlaylist> = {
         duration: "45:00",
         bpm: 145,
         youtubeVideoId: "F8sTqtJzNY4"
+      },
+      {
+        title: "Aggressive Gym Motivation - Trap Workout Mix 2026",
+        duration: "40:00",
+        bpm: 143,
+        youtubeVideoId: "8PX-GSdvSE0"
+      },
+      {
+        title: "Best Gym Workout Music Mix 2026 - Trap Workout Music",
+        duration: "50:00",
+        bpm: 141,
+        youtubeVideoId: "OwM2hoxCc6g"
       }
     ]
   },
@@ -467,6 +503,12 @@ export const MUSIC_PLAYLISTS: Record<string, MusicPlaylist> = {
         duration: "45:00",
         bpm: 132,
         youtubeVideoId: "6G97xIFJ3-A"
+      },
+      {
+        title: "Synthwave Workout Hyper Mix (Retro Game OST Energy)",
+        duration: "60:00",
+        bpm: 130,
+        youtubeVideoId: "hcJ9OKKWSG4"
       }
     ]
   },
@@ -523,6 +565,18 @@ export const MUSIC_PLAYLISTS: Record<string, MusicPlaylist> = {
         duration: "50:00",
         bpm: 134,
         youtubeVideoId: "aJAprDMqYyA"
+      },
+      {
+        title: "EDM Gym Mix 2026 - Intense Workout for Strength & HIIT",
+        duration: "50:00",
+        bpm: 131,
+        youtubeVideoId: "wPKzF9ZsLpI"
+      },
+      {
+        title: "Workout Mix 2026 - EDM & Techno Motivation Music",
+        duration: "45:00",
+        bpm: 133,
+        youtubeVideoId: "mlXlMcn2Yi0"
       }
     ]
   }

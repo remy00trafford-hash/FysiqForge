@@ -9,6 +9,7 @@ import { PaywallModal } from "./components/PaywallModal";
 import { FullPlanDashboard } from "./components/FullPlanDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { AiCoachChat } from "./components/AiCoachChat";
+import { FaqAndSupportModal } from "./components/FaqAndSupportModal";
 import { Language } from "./utils/translator";
 import { generateTrainingPlan, generateTrainingPlanAsync } from "./data/mockPlanGenerator";
 import { Bot, X } from "lucide-react";
@@ -21,6 +22,7 @@ export default function App() {
   const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
   const [showAdminModal, setShowAdminModal] = useState<boolean>(false);
   const [showCoachChatModal, setShowCoachChatModal] = useState<boolean>(false);
+  const [showFaqModal, setShowFaqModal] = useState<boolean>(false);
 
   // User State Data
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
@@ -124,6 +126,7 @@ export default function App() {
         userEmail={userEmail}
         onOpenAdmin={() => setShowAdminModal(true)}
         onOpenCoachChat={() => setShowCoachChatModal(true)}
+        onOpenFaq={() => setShowFaqModal(true)}
         isUnlocked={isUnlocked}
       />
 
@@ -214,6 +217,11 @@ export default function App() {
       {/* Admin Dashboard Overlay Modal */}
       {showAdminModal && (
         <AdminDashboard onClose={() => setShowAdminModal(false)} />
+      )}
+
+      {/* FAQ & Support — accessible depuis N'IMPORTE QUEL écran de l'app, pas seulement après paiement */}
+      {showFaqModal && (
+        <FaqAndSupportModal onClose={() => setShowFaqModal(false)} />
       )}
     </div>
   );

@@ -13,6 +13,7 @@ interface HeaderProps {
   userEmail: string | null;
   onOpenAdmin: () => void;
   onOpenCoachChat: () => void;
+  onOpenFaq: () => void;
   isUnlocked: boolean;
 }
 
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   userEmail,
   onOpenAdmin,
   onOpenCoachChat,
+  onOpenFaq,
   isUnlocked
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -104,6 +106,16 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative flex items-center gap-2">
           {/* Main Action Buttons Row */}
           <div className="flex items-center gap-2">
+            {/* FAQ & Support — toujours visible, sur tous les écrans, même avant tout paiement */}
+            <button
+              onClick={onOpenFaq}
+              className="hidden sm:flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+              title={language === "FR" ? "Foire Aux Questions & Support" : "FAQ & Support"}
+            >
+              <span className="text-sm">❓</span>
+              <span>FAQ</span>
+            </button>
+
             {/* AI Coach Button */}
             <button
               onClick={onOpenCoachChat}
@@ -218,6 +230,20 @@ export const Header: React.FC<HeaderProps> = ({
                     <span className="truncate">{userEmail}</span>
                   </div>
                 ) : null}
+
+                {/* FAQ & Support — visible ici aussi pour les écrans mobiles (bouton principal caché en dessous de sm:) */}
+                <button
+                  onClick={() => {
+                    onOpenFaq();
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 px-3 py-2 rounded-xl font-bold transition-all cursor-pointer sm:hidden"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">❓</span>
+                    <span>{language === "FR" ? "FAQ & Support" : "FAQ & Support"}</span>
+                  </div>
+                </button>
 
                 {/* Admin Access Button */}
                 <button
