@@ -136,7 +136,9 @@ export const WorkoutAudioPlayer: React.FC<WorkoutAudioPlayerProps> = ({ playlist
 
   const togglePlay = useCallback(() => {
     if (!playerRef.current || typeof playerRef.current.playVideo !== "function") {
-      setIsPlaying((prev) => !prev);
+      // Le lecteur n'est pas encore prêt — on retente son initialisation au lieu de
+      // simuler une lecture qui n'existe pas (ce qui trompait l'utilisateur avant).
+      initPlayer();
       return;
     }
 
@@ -147,7 +149,7 @@ export const WorkoutAudioPlayer: React.FC<WorkoutAudioPlayerProps> = ({ playlist
       playerRef.current.playVideo();
       setIsPlaying(true);
     }
-  }, [isPlaying]);
+  }, [isPlaying, initPlayer]);
 
   const nextTrack = useCallback(() => {
     if (!tracks.length) return;
@@ -174,7 +176,15 @@ export const WorkoutAudioPlayer: React.FC<WorkoutAudioPlayerProps> = ({ playlist
       <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF5500]/10 rounded-full blur-2xl pointer-events-none" />
 
       {/* Embedded YouTube IFrame Player Container (Mini/Hidden or Expanded) */}
-      <div className={`overflow-hidden transition-all duration-300 rounded-xl ${showVideoModal ? "h-64 sm:h-80 mb-3 border border-white/20" : "h-1 w-1 opacity-0 pointer-events-none absolute"}`}>
+      {/* Conteneur du lecteur YouTube — toujours une vraie taille (jamais 1x1px, ce qui empêchait
+          YouTube d'initialiser correctement le son), simplement positionné hors écran quand caché. */}
+      <div
+        className={`overflow-hidden transition-all duration-300 rounded-xl ${
+          showVideoModal
+            ? "relative h-64 sm:h-80 w-full mb-3 border border-white/20"
+            : "absolute w-[320px] h-[180px] -left-[9999px] -top-[9999px] pointer-events-none"
+        }`}
+      >
         <div id={containerIdRef.current} className="w-full h-full" />
       </div>
 

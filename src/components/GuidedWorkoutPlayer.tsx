@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { WorkoutDay, ExerciseItem } from "../types";
+import { StickFigureWarmup } from "./StickFigureWarmup";
 import {
   X,
   Play,
@@ -23,8 +24,7 @@ import {
   Language,
   UI_LABELS,
   translateExerciseName,
-  translateMuscleGroup,
-  translateInstructionStep
+  translateMuscleGroup
 } from "../utils/translator";
 import { speakText, stopSpeech } from "../utils/speechUtils";
 
@@ -46,7 +46,7 @@ interface WarmupStep {
   name: string;
   durationSec: number;
   description: string;
-  image: string;
+  stickFigureMove: "shoulders" | "jacks" | "chest";
 }
 
 const WARMUP_STEPS: WarmupStep[] = [
@@ -54,19 +54,19 @@ const WARMUP_STEPS: WarmupStep[] = [
     name: "Rotations Épaules & Coudes",
     durationSec: 30,
     description: "Fais tourner tes épaules vers l'avant puis vers l'arrière, bras détendus. Enchaîne avec des rotations de coudes pour lubrifier les articulations.",
-    image: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1200&q=80"
+    stickFigureMove: "shoulders"
   },
   {
     name: "Jumping Jacks",
     durationSec: 30,
     description: "Sauts écartés bras/jambes pour élever ton rythme cardiaque et préparer tout le corps à l'effort.",
-    image: "https://images.unsplash.com/photo-1601422407692-ec4eeec1d9b3?auto=format&fit=crop&w=1200&q=80"
+    stickFigureMove: "jacks"
   },
   {
     name: "Ouverture de Cage Thoracique",
     durationSec: 30,
     description: "Étirement dynamique de la poitrine et du haut du dos : bras écartés, ouvre et ferme la cage thoracique en respirant profondément.",
-    image: "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1200&q=80"
+    stickFigureMove: "chest"
   }
 ];
 
@@ -95,21 +95,97 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
   // --- COACH IA PROACTIF ---
   // Le coach intervient tout seul à des moments clés de la séance, sans que l'utilisateur
   // ait besoin d'aller le chercher dans le chat. Ça rend la séance vivante, comme un vrai coach présent.
+  // File d'attente : si plusieurs messages se déclenchent au même moment, ils s'affichent
+  // l'un après l'autre au lieu de s'écraser silencieusement.
   const [coachMessage, setCoachMessage] = useState<string | null>(null);
+  const coachQueueRef = useRef<string[]>([]);
   const coachTimeoutRef = useRef<number | null>(null);
   const firedCoachEventsRef = useRef<Set<string>>(new Set());
+  const [isCoachSpeaking, setIsCoachSpeaking] = useState(false);
+  const [countdownValue, setCountdownValue] = useState<number | null>(null);
+
+  const runPreStartCountdown = () => {
+    setCountdownValue(3);
+    playBeep(500, 0.12);
+    let n = 3;
+    const step = () => {
+      n -= 1;
+      if (n > 0) {
+        setCountdownValue(n);
+        playBeep(500, 0.12);
+        window.setTimeout(step, 700);
+      } else {
+        playBeep(900, 0.2);
+        setCountdownValue(null);
+      }
+    };
+    window.setTimeout(step, 700);
+  };
+
+  const showNextCoachMessage = () => {
+    const next = coachQueueRef.current.shift();
+    if (!next) {
+      setCoachMessage(null);
+      coachTimeoutRef.current = null;
+      setIsCoachSpeaking(false);
+      // Fin de tous les messages en attente : le coach a fini de parler,
+      // on lance le décompte 3-2-1 avant de reprendre le chrono normalement.
+      runPreStartCountdown();
+      return;
+    }
+    setCoachMessage(next);
+    setIsCoachSpeaking(true);
+    const spoke = speakText(
+      next,
+      () => setIsCoachSpeaking(true),
+      () => {
+        // Le coach a fini cette phrase — on enchaîne sur le message suivant s'il y en a un
+        if (coachQueueRef.current.length > 0) {
+          showNextCoachMessage();
+        } else {
+          setIsCoachSpeaking(false);
+          setCoachMessage(null);
+          runPreStartCountdown();
+        }
+      },
+      () => {
+        // La synthèse vocale a échoué (navigateur non compatible) — on ne bloque pas
+        // l'utilisateur pour autant, on laisse le message affiché quelques secondes.
+        window.setTimeout(() => {
+          if (coachQueueRef.current.length > 0) {
+            showNextCoachMessage();
+          } else {
+            setIsCoachSpeaking(false);
+            setCoachMessage(null);
+            runPreStartCountdown();
+          }
+        }, 3000);
+      }
+    );
+    if (!spoke) {
+      // Speech Synthesis indisponible dans ce navigateur : on affiche le message
+      // le temps de le lire, puis on enchaîne comme si la voix avait parlé.
+      window.setTimeout(() => {
+        if (coachQueueRef.current.length > 0) {
+          showNextCoachMessage();
+        } else {
+          setIsCoachSpeaking(false);
+          setCoachMessage(null);
+          runPreStartCountdown();
+        }
+      }, 3200);
+    }
+  };
 
   const triggerCoachMessage = (text: string, eventKey?: string) => {
     if (eventKey) {
       if (firedCoachEventsRef.current.has(eventKey)) return;
       firedCoachEventsRef.current.add(eventKey);
     }
-    setCoachMessage(text);
-    if (!isMuted) {
-      speakText(text, () => {}, () => {}, () => {});
+    coachQueueRef.current.push(text);
+    if (!isCoachSpeaking && coachMessage === null && countdownValue === null) {
+      showNextCoachMessage();
     }
-    if (coachTimeoutRef.current) window.clearTimeout(coachTimeoutRef.current);
-    coachTimeoutRef.current = window.setTimeout(() => setCoachMessage(null), 6000) as unknown as number;
   };
 
   // Message d'accueil au tout début de l'échauffement
@@ -123,6 +199,16 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
 
   // Interventions automatiques déclenchées par les changements de phase / progression
   useEffect(() => {
+    if (phase === "EXERCISE" && currentSet === 1) {
+      // Vérification du matériel AVANT chaque nouvel exercice — le coach le demande
+      // à voix haute au lieu de laisser l'utilisateur découvrir seul qu'il n'a pas l'outil.
+      const exName = exercises[currentExIdx]?.name || "cet exercice";
+      triggerCoachMessage(
+        `Prochain mouvement : ${exName}. As-tu le matériel nécessaire ? Sinon, appuie sur "As-tu cet outil" pour une alternative.`,
+        `equipment-check-${currentExIdx}`
+      );
+    }
+
     if (phase === "EXERCISE" && currentExIdx === 0 && currentSet === 1) {
       triggerCoachMessage("Premier exercice ! Concentre-toi sur la technique avant la charge.", "first-exercise");
     }
@@ -189,10 +275,11 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
     }
   };
 
-  // Automatic Timer Countdown Logic
+  // Automatic Timer Countdown Logic — se met en PAUSE tant que le coach parle ou que
+  // le décompte 3-2-1 est en cours, pour que l'utilisateur ne soit jamais pris de court.
   useEffect(() => {
     let interval: any = null;
-    if (isRunning && timeLeft > 0 && phase !== "COMPLETE") {
+    if (isRunning && timeLeft > 0 && phase !== "COMPLETE" && !isCoachSpeaking && countdownValue === null) {
       interval = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev === 4 || prev === 3 || prev === 2) {
@@ -203,12 +290,12 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
           return prev - 1;
         });
       }, 1000);
-    } else if (isRunning && timeLeft === 0 && phase !== "COMPLETE") {
+    } else if (isRunning && timeLeft === 0 && phase !== "COMPLETE" && !isCoachSpeaking && countdownValue === null) {
       // AUTOMATIC ADVANCE WITHOUT CLICKS!
       handleAutoAdvancePhase();
     }
     return () => clearInterval(interval);
-  }, [isRunning, timeLeft, phase, currentExIdx, currentSet]);
+  }, [isRunning, timeLeft, phase, currentExIdx, currentSet, isCoachSpeaking, countdownValue]);
 
   // Handle Automatic Phase Transitions
   const handleAutoAdvancePhase = () => {
@@ -335,19 +422,27 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] max-w-md w-[92%] animate-in slide-in-from-top-4 fade-in duration-300">
           <div className="bg-gradient-to-r from-[#FF5500] to-[#FF8A00] rounded-2xl px-4 py-3 shadow-2xl shadow-[#FF5500]/30 flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center shrink-0 mt-0.5">
-              <span className="text-sm">🤖</span>
+              <span className={`text-sm ${isCoachSpeaking ? "animate-pulse" : ""}`}>🤖</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wider text-black/70 mb-0.5">Coach IA FysiqForge</p>
+              <p className="text-[10px] font-black uppercase tracking-wider text-black/70 mb-0.5">
+                Coach IA FysiqForge {isCoachSpeaking && "· en train de parler..."}
+              </p>
               <p className="text-sm font-bold text-black leading-snug">{coachMessage}</p>
             </div>
-            <button
-              onClick={() => setCoachMessage(null)}
-              className="text-black/50 hover:text-black shrink-0 text-lg leading-none mt-0.5"
-              aria-label="Fermer"
-            >
-              ×
-            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Décompte 3-2-1 avant la reprise du chrono, une fois que le coach a fini de parler */}
+      {countdownValue !== null && (
+        <div className="absolute inset-0 z-[70] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4 animate-in fade-in duration-200">
+          <p className="text-sm font-bold uppercase tracking-widest text-[#FF8A3D]">C'est parti dans</p>
+          <div
+            key={countdownValue}
+            className="text-[120px] font-black text-white leading-none animate-in zoom-in-50 duration-300"
+          >
+            {countdownValue}
           </div>
         </div>
       )}
@@ -447,18 +542,19 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
             key={`img-${phase}-${currentExIdx}-${currentSet}`}
             className="relative w-full h-64 sm:h-80 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl bg-black group animate-fade-slide"
           >
-            <img
-              key={`src-${phase}-${currentExIdx}-${currentWarmupIdx}`}
-              src={
-                phase === "WARMUP"
-                  ? WARMUP_STEPS[currentWarmupIdx]?.image
-                  : phase === "REST"
-                  ? REST_IMAGE
-                  : currentExercise?.illustrationUrl || WARMUP_STEPS[0].image
-              }
-              alt={phase === "WARMUP" ? WARMUP_STEPS[currentWarmupIdx]?.name : currentExercise?.name || "Exercise"}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 animate-image-fade"
-            />
+            {phase === "WARMUP" ? (
+              <StickFigureWarmup
+                key={`stick-${currentWarmupIdx}`}
+                move={WARMUP_STEPS[currentWarmupIdx]?.stickFigureMove || "shoulders"}
+              />
+            ) : (
+              <img
+                key={`src-${phase}-${currentExIdx}`}
+                src={phase === "REST" ? REST_IMAGE : currentExercise?.illustrationUrl || REST_IMAGE}
+                alt={currentExercise?.name || "Exercise"}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 animate-image-fade"
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
 
             {/* OVERLAY TIMER DISPLAY */}
@@ -603,7 +699,7 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
                       <span className="w-4 h-4 rounded-full bg-[#FF5500]/20 text-[#FF5500] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                         {idx + 1}
                       </span>
-                      <span>{translateInstructionStep(step, language)}</span>
+                      <span>{step}</span>
                     </li>
                   ))}
                 </ol>

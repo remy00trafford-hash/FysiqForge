@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Step, UserAnswers, TrainingPlan, PlanTierId } from "./types";
 import { Header } from "./components/Header";
 import { LandingHero } from "./components/LandingHero";
@@ -40,6 +40,27 @@ export default function App() {
 
   // Current Generated Training Plan
   const [generatedPlan, setGeneratedPlan] = useState<TrainingPlan | null>(null);
+
+  // Restauration automatique de session — si l'utilisateur a déjà payé et qu'il revient
+  // sur l'app (fermeture/réouverture du navigateur), on le renvoie DIRECTEMENT à son plan
+  // débloqué, sans jamais lui remontrer le paywall qu'il a déjà passé.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("fysiqforge_unlocked_session");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.plan && parsed?.email) {
+          setGeneratedPlan(parsed.plan);
+          setUserEmail(parsed.email);
+          setIsUnlocked(true);
+          setCurrentStep("FULL_PLAN");
+        }
+      }
+    } catch (e) {
+      console.warn("Impossible de restaurer la session précédente:", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Step 1 -> Step 2 (Photo)
   const handleStartFlow = () => {
@@ -103,11 +124,23 @@ export default function App() {
     setIsUnlocked(true);
 
     if (generatedPlan) {
-      setGeneratedPlan({
+      const unlockedPlan = {
         ...generatedPlan,
         tierId,
         unlockedAt: new Date().toLocaleTimeString()
-      });
+      };
+      setGeneratedPlan(unlockedPlan);
+
+      // On sauvegarde l'accès pour que l'utilisateur ne retombe JAMAIS sur le paywall
+      // s'il ferme l'app et revient plus tard, alors qu'il a déjà payé.
+      try {
+        localStorage.setItem(
+          "fysiqforge_unlocked_session",
+          JSON.stringify({ email, plan: unlockedPlan, unlockedAt: Date.now() })
+        );
+      } catch (e) {
+        console.warn("Impossible de sauvegarder la session localement:", e);
+      }
     }
 
     setCurrentStep("FULL_PLAN");

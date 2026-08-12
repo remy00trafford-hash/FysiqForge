@@ -193,7 +193,47 @@ function inferMuscleKey(input: string): string {
   return "chest";
 }
 
-function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
+// Traduit un lot d'instructions d'exercices (anglais -> français naturel) en UNE seule
+// requête groupée à Gemini, pour remplacer le bricolage de remplacement mot-à-mot qui
+// produisait un charabia franglais ("position one in place on your poitrine").
+async function translateInstructionsBatch(
+  entries: { key: string; steps: string[] }[]
+): Promise<Record<string, string[]>> {
+  if (entries.length === 0) return {};
+
+  try {
+    const ai = getGeminiClient();
+    if (!ai) return {};
+
+    const inputPayload = entries.map((e) => ({ key: e.key, steps: e.steps }));
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: `Traduis en français naturel et fluide (pas mot-à-mot) chaque tableau "steps" ci-dessous, qui décrit les étapes d'exécution d'un exercice de musculation. Garde le même nombre de phrases dans le même ordre, ton clair et direct comme un coach sportif francophone. Réponds UNIQUEMENT avec un tableau JSON de la forme [{"key": "...", "steps": ["...","..."]}], sans aucun texte autour.\n\nDonnées à traduire :\n${JSON.stringify(inputPayload)}`,
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.3,
+        maxOutputTokens: 4096
+      }
+    });
+
+    const parsed = JSON.parse(response.text || "[]");
+    const map: Record<string, string[]> = {};
+    if (Array.isArray(parsed)) {
+      parsed.forEach((item: any) => {
+        if (item?.key && Array.isArray(item.steps)) {
+          map[item.key] = item.steps;
+        }
+      });
+    }
+    return map;
+  } catch (e) {
+    console.error("[FysiqForge] Échec de la traduction groupée des instructions:", e);
+    return {};
+  }
+}
+
+async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
   if (!planData || !planData.weekSchedule || !Array.isArray(planData.weekSchedule)) {
     return planData;
   }
@@ -205,6 +245,8 @@ function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
   const equipmentPref = (userAnswers?.equipment || "").toLowerCase();
   const targetZonePref = (userAnswers?.targetZone || "").toLowerCase();
   const usedExerciseIds = new Set<string>();
+  const rawInstructionsToTranslate: { key: string; steps: string[] }[] = [];
+  let exerciseCounter = 0;
 
   planData.weekSchedule.forEach((day: any) => {
     if (!day.exercises || !Array.isArray(day.exercises)) return;
@@ -258,6 +300,19 @@ function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
           .map((m) => MUSCLE_MAP_FR[m.toLowerCase()] || m)
           .join(" & ");
 
+        const rawSteps = matched.instructions && matched.instructions.length > 0
+          ? matched.instructions
+          : ex.executionSteps || [];
+
+        // Ces instructions viennent de la base ExerciseDB, donc en ANGLAIS —
+        // on les met en file pour une vraie traduction groupée juste après,
+        // au lieu de les afficher telles quelles ou de bricoler un remplacement mot-à-mot.
+        exerciseCounter += 1;
+        const translationKey = `ex-${exerciseCounter}`;
+        if (rawSteps.length > 0) {
+          rawInstructionsToTranslate.push({ key: translationKey, steps: rawSteps });
+        }
+
         return {
           id: matched.id,
           name: matched.name,
@@ -267,11 +322,31 @@ function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
           restSeconds: ex.restSeconds || 75,
           tips: ex.tips || (matched.instructions && matched.instructions[0]) || "Gardez une exécution contrôlée et une tension continue.",
           illustrationUrl: imgUrl,
-          executionSteps: matched.instructions && matched.instructions.length > 0 ? matched.instructions : ex.executionSteps || [],
+          executionSteps: rawSteps,
+          _translationKey: translationKey,
           alternativeExercise: ex.alternativeExercise || `Variante ${matched.primaryMuscles[0] || "ciblée"}`
         };
       }
 
+      return ex;
+    });
+  });
+
+  // Traduction groupée en UNE requête (rapide, économe en quota API) plutôt qu'un
+  // remplacement mot-à-mot approximatif ou qu'un appel séparé par exercice.
+  const translatedMap = await translateInstructionsBatch(rawInstructionsToTranslate);
+
+  planData.weekSchedule.forEach((day: any) => {
+    if (!day.exercises || !Array.isArray(day.exercises)) return;
+    day.exercises = day.exercises.map((ex: any) => {
+      if (ex._translationKey && translatedMap[ex._translationKey]) {
+        ex.executionSteps = translatedMap[ex._translationKey];
+        if (ex.tips && translatedMap[ex._translationKey][0]) {
+          // Garde le tips original s'il venait déjà de l'IA (souvent déjà en français),
+          // sinon utilise la première étape traduite comme repli.
+        }
+      }
+      delete ex._translationKey;
       return ex;
     });
   });
@@ -514,7 +589,49 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
     { name: "Gainage Latéral", muscleGroup: "Obliques & Core", sets: 3, reps: "30-45 sec/côté", restSeconds: 45, tips: "Aligne épaule-hanche-cheville, ne laisse pas tomber le bassin." }
   ];
 
-  const dayTemplates = [
+  // Style "circuit maison" — beaucoup d'exercices courts au poids du corps, comme les
+  // apps de sport à la maison (Home Workout), activé quand l'utilisateur n'a pas de matériel.
+  const isBodyweightFallback = /poids du corps|sans matériel|maison/i.test(equipment);
+
+  const bodyweightCircuitPool = [
+    { name: "Pompes Classiques", muscleGroup: "Pectoraux & Triceps", sets: 1, reps: "30 sec", restSeconds: 20, tips: "Corps bien gainé, descends jusqu'à ce que la poitrine frôle le sol." },
+    { name: "Squats au Poids du Corps", muscleGroup: "Quadriceps & Fessiers", sets: 1, reps: "20 reps", restSeconds: 20, tips: "Descends comme pour t'asseoir sur une chaise, talons ancrés." },
+    { name: "Fentes Marchées", muscleGroup: "Quadriceps & Fessiers", sets: 1, reps: "16 reps (8/jambe)", restSeconds: 20, tips: "Genou avant aligné avec la cheville, buste droit." },
+    { name: "Mountain Climbers", muscleGroup: "Cardio & Abdominaux", sets: 1, reps: "30 sec", restSeconds: 20, tips: "Ramène les genoux vite vers la poitrine, garde le dos plat." },
+    { name: "Gainage Planche", muscleGroup: "Core & Abdominaux", sets: 1, reps: "40 sec", restSeconds: 20, tips: "Aligne épaules-hanches-chevilles, ne laisse pas le bassin tomber." },
+    { name: "Pont Fessier", muscleGroup: "Fessiers & Ischios", sets: 1, reps: "20 reps", restSeconds: 20, tips: "Contracte bien les fessiers en haut du mouvement." },
+    { name: "Donkey Kicks (Jambe Gauche)", muscleGroup: "Fessiers (Isolation)", sets: 1, reps: "16 reps", restSeconds: 15, tips: "Pousse le talon vers le plafond sans cambrer le dos." },
+    { name: "Donkey Kicks (Jambe Droite)", muscleGroup: "Fessiers (Isolation)", sets: 1, reps: "16 reps", restSeconds: 15, tips: "Même mouvement, jambe opposée, garde le rythme." },
+    { name: "Dips sur Chaise", muscleGroup: "Triceps", sets: 1, reps: "15 reps", restSeconds: 20, tips: "Coudes vers l'arrière, descends jusqu'à un angle de 90°." },
+    { name: "Superman", muscleGroup: "Bas du Dos", sets: 1, reps: "16 reps", restSeconds: 15, tips: "Lève bras et jambes en même temps, tiens 1 seconde en haut." },
+    { name: "Jumping Jacks", muscleGroup: "Cardio Complet", sets: 1, reps: "30 sec", restSeconds: 15, tips: "Rythme soutenu, atterris en douceur sur les appuis." },
+    { name: "Squats Sautés", muscleGroup: "Quadriceps & Explosivité", sets: 1, reps: "15 reps", restSeconds: 25, tips: "Amortis bien la réception à chaque saut." },
+    { name: "Crunchs Abdominaux", muscleGroup: "Abdominaux Supérieurs", sets: 1, reps: "20 reps", restSeconds: 15, tips: "Enroule le buste sans tirer sur la nuque." },
+    { name: "Étirement Adducteurs Debout", muscleGroup: "Étirement Jambes", sets: 1, reps: "30 sec/côté", restSeconds: 10, tips: "Étire en douceur, ne force jamais dans la douleur." },
+    { name: "Pike Push-Ups", muscleGroup: "Épaules", sets: 1, reps: "12 reps", restSeconds: 20, tips: "Hanches hautes, pousse comme un développé militaire incliné." },
+    { name: "Rowing Inversé (Table/Barre Basse)", muscleGroup: "Dos", sets: 1, reps: "12 reps", restSeconds: 20, tips: "Tire la poitrine vers l'appui, omoplates serrées." },
+    { name: "Chaise Murale (Wall Sit)", muscleGroup: "Quadriceps (Isométrique)", sets: 1, reps: "35 sec", restSeconds: 20, tips: "Cuisses parallèles au sol, dos bien plaqué au mur." },
+    { name: "Étirement Lombaire Torsion", muscleGroup: "Étirement Dos", sets: 1, reps: "30 sec/côté", restSeconds: 10, tips: "Allongé, laisse tomber les genoux d'un côté en douceur." }
+  ];
+
+  const shuffleCircuitForDay = (dayIdx: number, count: number) => {
+    // Fait tourner la sélection selon le jour pour éviter d'avoir exactement les mêmes
+    // exercices chaque jour, tout en gardant une vraie diversité de mouvements.
+    const rotated = [...bodyweightCircuitPool.slice(dayIdx * 3), ...bodyweightCircuitPool.slice(0, dayIdx * 3)];
+    return rotated.slice(0, count);
+  };
+
+  const dayTemplates = isBodyweightFallback
+    ? Array.from({ length: 6 }).map((_, idx) => ({
+        title: idx % 2 === 0
+          ? `Circuit Full Body Intensif #${idx + 1} (${targetZone})`
+          : `Circuit Cardio & Renforcement #${idx + 1}`,
+        focus: "Corps Entier — Circuit au poids du corps",
+        exercises: shuffleCircuitForDay(idx, 14),
+        duration: 30,
+        cal: 260
+      }))
+    : [
     { title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`, focus: "Pectoraux & Triceps", exercises: sampleExercisesPush, duration: 50, cal: 440 },
     { title: "Dos, Biceps & Posture (Pull Titan)", focus: "Grand Dorsal & Biceps", exercises: sampleExercisesPull, duration: 55, cal: 460 },
     { title: "Bas du Corps & Gainage (Legs Power)", focus: "Quadriceps, Ischios & Abdominaux", exercises: sampleExercisesLegs, duration: 50, cal: 510 },
@@ -582,6 +699,18 @@ app.post("/api/ai/generate-plan", async (req, res) => {
     ? Math.min(Math.max(parsedFrequency, 2), 6)
     : 4;
 
+  // Le style de séance dépend du matériel : au poids du corps/maison, on peut enchaîner
+  // beaucoup d'exercices courts façon circuit (comme les apps de sport à la maison) ;
+  // en salle avec charges, il faut moins d'exercices mais plus intenses et bien récupérés,
+  // sinon une séance durerait plusieurs heures et deviendrait dangereuse/contre-productive.
+  const equipmentAnswer = String(userAnswers?.equipment || "").toLowerCase();
+  const isBodyweightStyle = equipmentAnswer.includes("poids du corps") || equipmentAnswer.includes("sans matériel") || equipmentAnswer.includes("maison");
+  const minExercisesPerDay = isBodyweightStyle ? 12 : 6;
+  const maxExercisesPerDay = isBodyweightStyle ? 18 : 8;
+  const exerciseStyleGuidance = isBodyweightStyle
+    ? `Séance façon "circuit à la maison" (type app de fitness maison) : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices au poids du corps par jour, chacun COURT (15 à 45 secondes, ou 10-20 répétitions), enchaînés avec peu de repos (20-30 secondes entre chaque). Beaucoup de variété de mouvements (fentes, squats, gainage, mountain climbers, donkey kicks, pompes variées, étirements dynamiques) pour cibler tout le corps sans jamais dépasser 30-35 minutes de séance totale.`
+    : `Séance de musculation en salle avec charges : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices par jour (mouvements composés + isolation), chacun avec 3-4 séries de 8-15 répétitions et 60-120 secondes de repos entre séries, pour une séance réaliste de 45-70 minutes.`;
+
   try {
     const ai = getGeminiClient();
 
@@ -606,12 +735,13 @@ CONSIGNES STRICTES :
    - Si "Salle de sport équipée", utilise la variété de machines, poulies, barres et haltères.
 2. DIVERSITÉ & PAS DE RÉTRO-RÉPÉTITION D'EXERCICES IDENTIQUES D'UN JOUR À L'AUTRE : chaque jour de la semaine doit comporter des exercices distincts, ciblés et stimulants.
 3. LOGIQUE DE PROGRESSION MULTI-SEMAINES SUR 8 SEMAINES :
-   Génère un tableau "weeksProgression" de 4 blocs de semaines (Semaines 1-2, 3-4, 5-6, 7-8) détaillant la surcharge progressive (augmentation des charges, variation des répétitions, RPE, tempo, technique d'intensité).
+   Génère un tableau "weeksProgression" de 4 blocs de semaines (Semaines 1-2, 3-4, 5-6, 7-8) détaillant la surcharge progressive (augmentation des charges, variation des répétitions, RPE, tempo, technique d'intensité). CHAQUE bloc doit aussi introduire AU MOINS 2-3 exercices différents des blocs précédents pour le même groupe musculaire (variantes ou nouveaux mouvements), afin que l'utilisateur ne refasse jamais exactement les mêmes exercices toutes les 8 semaines — garde uniquement les mouvements de base essentiels (squat, développé, tirage) en continuité, et fais varier les accessoires/isolations.
 4. VOLUME OBLIGATOIRE — RÈGLE NON NÉGOCIABLE POUR UN VRAI RÉSULTAT PHYSIQUE :
    - Le tableau "weekSchedule" DOIT contenir EXACTEMENT ${numTrainingDays} jours d'entraînement complets (un objet par jour), correspondant à la fréquence demandée par l'utilisateur (${userAnswers?.frequency || "4 jours / sem"}). Ne génère JAMAIS moins de jours que cela.
-   - CHAQUE jour DOIT contenir ENTRE 6 ET 8 exercices minimum (jamais moins de 6), couvrant échauffement implicite + mouvements composés + isolation, pour constituer une vraie séance complète et efficace pour la transformation physique visée.
+   - ${exerciseStyleGuidance}
    - Les groupes musculaires doivent être répartis intelligemment sur la semaine (ex: split Push/Pull/Legs, ou Haut/Bas du corps) selon le nombre de jours, sans jamais cibler deux fois le même groupe principal deux jours de suite (sauf si fréquence ≤ 3 jours et objectif full-body).
    - Le total d'exercices sur la semaine doit refléter un vrai programme de musculation professionnel, pas une démo simplifiée.
+5. TON DES CONSIGNES ("tips" et conseils du coach) : registre français FAMILIER et direct, comme un coach sportif qui parle à l'oral — pas de français soutenu ni de formulations robotiques. Exemple : "Vas-y doucement sur la descente, tu dois sentir ça tirer" plutôt que "Effectuez une flexion contrôlée de l'articulation".
 
 Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
 {
@@ -675,13 +805,13 @@ Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
           ],
           "alternativeExercise": "Exercice alternatif"
         }
-        // ⚠️ CONTINUE ICI avec 5 à 7 AUTRES OBJETS EXERCICE DIFFÉRENTS pour ce même Jour 1
+        // ⚠️ CONTINUE ICI avec ${minExercisesPerDay - 1} à ${maxExercisesPerDay - 1} AUTRES OBJETS EXERCICE DIFFÉRENTS pour ce même Jour 1
         // (id: "ex2", "ex3"... jusqu'à "ex6" ou "ex7" minimum). Ne t'arrête jamais à 1 seul exercice par jour.
       ]
     }
     // ⚠️ CONTINUE ICI avec les jours suivants (dayNumber: 2, 3, 4...) jusqu'à obtenir
     // EXACTEMENT ${numTrainingDays} objets "jour" au total dans ce tableau weekSchedule,
-    // chacun avec 6 à 8 exercices distincts comme le Jour 1 ci-dessus. C'est une exigence stricte.
+    // chacun avec ${minExercisesPerDay} à ${maxExercisesPerDay} exercices distincts comme le Jour 1 ci-dessus. C'est une exigence stricte.
   ]
 }`;
 
@@ -698,23 +828,23 @@ Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
 
         const jsonText = response.text || "";
         const generatedPlanData = JSON.parse(jsonText);
-        const enrichedPlan = enrichPlanWithFreeExerciseDb(generatedPlanData, userAnswers);
+        const enrichedPlan = await enrichPlanWithFreeExerciseDb(generatedPlanData, userAnswers);
         return res.json({ success: true, planData: enrichedPlan });
       } catch (geminiErr) {
         console.warn("[FysiqForge AI] Plan generation Gemini quota/API error, using smart fallback plan:", geminiErr);
         const fallbackPlan = generateFallbackPlanData(userAnswers, analysis);
-        const enrichedPlan = enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
+        const enrichedPlan = await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
         return res.json({ success: true, planData: enrichedPlan, isFallback: true });
       }
     }
 
     const fallbackPlan = generateFallbackPlanData(userAnswers, analysis);
-    const enrichedPlan = enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
+    const enrichedPlan = await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
     return res.json({ success: true, planData: enrichedPlan, isFallback: true });
   } catch (err) {
     console.error("Error in /api/ai/generate-plan:", err);
     const fallbackPlan = generateFallbackPlanData(userAnswers, analysis);
-    const enrichedPlan = enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
+    const enrichedPlan = await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
     return res.json({ success: true, planData: enrichedPlan, isFallback: true });
   }
 });
