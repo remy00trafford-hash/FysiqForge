@@ -105,8 +105,8 @@ export const QuestionnaireStep: React.FC<QuestionnaireStepProps> = ({
           </div>
         </div>
 
-        {/* 3. Disponibilité (Fréquence & Durée) */}
-        <div className="grid sm:grid-cols-2 gap-6">
+        {/* 3. Disponibilité (Fréquence & Durée & Heure) */}
+        <div className="grid sm:grid-cols-3 gap-6">
           <div className="space-y-3">
             <label className="block text-sm font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-[#FF5500]" /> Fréquence par semaine
@@ -137,6 +137,19 @@ export const QuestionnaireStep: React.FC<QuestionnaireStepProps> = ({
               <option value="45-60 min">45 à 60 minutes (Standard)</option>
               <option value="60-90 min">60 à 90 minutes (Séance Complète)</option>
             </select>
+          </div>
+
+          <div className="space-y-3">
+            <label className="block text-sm font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#FF5500]" /> Heure habituelle
+            </label>
+            <input
+              type="time"
+              value={answers.preferredWorkoutTime || "18:00"}
+              onChange={(e) => setAnswers({ ...answers, preferredWorkoutTime: e.target.value })}
+              className="w-full bg-[#121218] border border-white/15 rounded-xl px-4 py-3 text-sm font-semibold text-white focus:outline-none focus:border-[#FF5500]"
+            />
+            <p className="text-[10px] text-gray-500">Pour caler tes rappels sur ce créneau.</p>
           </div>
         </div>
 

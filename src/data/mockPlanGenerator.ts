@@ -181,11 +181,19 @@ export async function generateTrainingPlanAsync(
   analysis: PhotoAnalysisResult
 ): Promise<TrainingPlan> {
   try {
+    // Timeout de sécurité : la génération complète (Gemini + enrichissement + traduction)
+    // peut prendre du temps, mais ne doit jamais bloquer l'utilisateur indéfiniment.
+    // Passé ce délai, on bascule automatiquement sur le générateur local de secours.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     const res = await fetch("/api/ai/generate-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tierId, userAnswers, analysis })
+      body: JSON.stringify({ tierId, userAnswers, analysis }),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     const data = await res.json();
     if (data.success && data.planData) {

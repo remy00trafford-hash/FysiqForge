@@ -2,6 +2,7 @@ export type Step =
   | "LANDING"
   | "PHOTO"
   | "QUESTIONNAIRE"
+  | "GENERATING"
   | "AHA_PREVIEW"
   | "PAYWALL"
   | "FULL_PLAN"
@@ -36,6 +37,7 @@ export interface UserAnswers {
   constraints: string; // Injuries or limitations
   healthConsent: boolean;
   photoUrl?: string;
+  preferredWorkoutTime?: string; // Heure habituelle de séance, format "HH:MM", pour caler les rappels
 }
 
 export interface PhotoAnalysisResult {

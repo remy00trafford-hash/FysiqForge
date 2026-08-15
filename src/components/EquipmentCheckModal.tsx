@@ -170,7 +170,7 @@ export const EquipmentCheckModal: React.FC<EquipmentCheckModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-[#16161E] border border-white/20 rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 text-white shadow-2xl relative animate-in fade-in zoom-in-95">
         <button
           onClick={onClose}

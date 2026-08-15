@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { TrainingPlan, WorkoutLog, ExerciseItem } from "../types";
 import { WorkoutAudioPlayer } from "./WorkoutAudioPlayer";
 import { GuidedWorkoutPlayer } from "./GuidedWorkoutPlayer";
@@ -9,6 +9,7 @@ import { NutritionGuideModal } from "./NutritionGuideModal";
 import { AiCoachChat } from "./AiCoachChat";
 import { ProgressTracker } from "./ProgressTracker";
 import { MedicalDisclaimerBanner } from "./MedicalDisclaimerBanner";
+import { NotificationCenter } from "./NotificationCenter";
 import { Dumbbell, Calendar, Music, Bot, TrendingUp, CheckCircle, Flame, Bell, Award, Sparkles, HelpCircle, Utensils, Printer, Play } from "lucide-react";
 import { Language, UI_LABELS, translateExerciseName, translateMuscleGroup } from "../utils/translator";
 
@@ -27,6 +28,71 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<"WORKOUTS" | "COACH" | "PROGRESS">("WORKOUTS");
   const [activeDayIdx, setActiveDayIdx] = useState(0);
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
+  const [currentProgramWeek, setCurrentProgramWeek] = useState(1);
+  const [weekTransitionBanner, setWeekTransitionBanner] = useState<number | null>(null);
+  const [workoutIdsForWeek, setWorkoutIdsForWeek] = useState<string[]>([]);
+
+  // Date de début du programme — fixée une seule fois au premier déblocage, persistée
+  // pour rester stable même après rechargement de la page.
+  const [programStartDate] = useState<Date>(() => {
+    const key = `fysiqforge_program_start_${userEmail}`;
+    let stored = localStorage.getItem(key);
+    if (!stored) {
+      stored = new Date().toISOString();
+      localStorage.setItem(key, stored);
+    }
+    return new Date(stored);
+  });
+  const totalProgramWeeks = plan.totalWeeks || 8;
+  const programEndDate = new Date(programStartDate);
+  programEndDate.setDate(programEndDate.getDate() + totalProgramWeeks * 7);
+  const formatFrDate = (d: Date) =>
+    d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+
+  // Enregistre automatiquement le programme généré auprès du système de rappels —
+  // UNE SEULE FOIS par utilisateur (pas à chaque rechargement de page).
+  useEffect(() => {
+    const registerKey = `fysiqforge_reminders_registered_${userEmail}`;
+    if (!userEmail || localStorage.getItem(registerKey)) return;
+
+    fetch("/api/reminders/register-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: userEmail,
+        weekSchedule: plan.weekSchedule,
+        preferredTime: plan.userAnswers?.preferredWorkoutTime || "18:00",
+        objective: plan.userAnswers?.objective || "Transformation physique"
+      })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.workoutIds) {
+          setWorkoutIdsForWeek(data.workoutIds);
+          localStorage.setItem(registerKey, "1");
+        }
+      })
+      .catch((e) => console.warn("Enregistrement des rappels impossible:", e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail]);
+
+  const handleMarkWorkoutDoneFromNotif = useCallback((workoutId: string) => {
+    fetch("/api/reminders/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: userEmail, workoutId })
+    }).catch(() => {});
+  }, [userEmail]);
+
+  const handleRescheduleWorkoutFromNotif = useCallback((workoutId: string) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    fetch("/api/reminders/reschedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: userEmail, workoutId, newDateTimeISO: tomorrow.toISOString() })
+    }).catch(() => {});
+  }, [userEmail]);
 
   // Active Guided Workout Player state
   const [isGuidedWorkoutActive, setIsGuidedWorkoutActive] = useState(false);
@@ -39,7 +105,6 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [showNutritionModal, setShowNutritionModal] = useState(false);
   const [showBilanModal, setShowBilanModal] = useState(false);
-  const [remindersEnabled, setRemindersEnabled] = useState(true);
 
   // Completed workouts state
   const [completedDays, setCompletedDays] = useState<number[]>([]);
@@ -74,6 +139,39 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
       setCompletedDays((prev) => [...prev, currentDay.dayNumber]);
     }
     setShowBilanModal(false);
+
+    // Informe le système de rappels que cette séance est bien faite — le rappel
+    // et les notifications liées se referment automatiquement côté serveur.
+    const workoutId = workoutIdsForWeek[activeDayIdx];
+    if (workoutId && userEmail) {
+      fetch("/api/reminders/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, workoutId })
+      }).catch(() => {});
+    }
+
+    // Enchaînement automatique : après le bilan, on montre le conseil nutrition
+    // avant de basculer vers le jour suivant — l'utilisateur n'a rien à cliquer.
+    setShowNutritionModal(true);
+  };
+
+  // Appelée à la fermeture du conseil nutrition : bascule automatiquement vers le jour
+  // suivant. Si on vient de terminer le dernier jour de la semaine, on revient au jour 1
+  // en signalant clairement le passage à la semaine suivante du programme.
+  const handleAdvanceToNextDayAfterNutrition = () => {
+    setShowNutritionModal(false);
+    const isLastDayOfWeek = activeDayIdx >= plan.weekSchedule.length - 1;
+
+    if (isLastDayOfWeek) {
+      const nextWeek = currentProgramWeek + 1;
+      setCurrentProgramWeek(nextWeek);
+      setActiveDayIdx(0);
+      setWeekTransitionBanner(nextWeek);
+      window.setTimeout(() => setWeekTransitionBanner(null), 5000);
+    } else {
+      setActiveDayIdx((prev) => prev + 1);
+    }
   };
 
   // Replace exercise in plan schedule
@@ -97,7 +195,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
         {/* Unlocked Program Title Bar */}
-        <div className="bg-gradient-to-r from-[#16161E] via-[#1A1A24] to-[#0D0D11] border border-emerald-500/30 rounded-3xl p-6 sm:p-8 space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="bg-gradient-to-r from-[#16161E] via-[#1A1A24] to-[#0D0D11] border border-emerald-500/30 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl relative overflow-hidden">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
@@ -107,50 +205,44 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
               <h1 className="text-2xl sm:text-4xl font-black uppercase font-display text-white">
                 {plan.programTitle}
               </h1>
-              <p className="text-xs text-gray-300">
-                Membre : <strong className="text-white">{userEmail}</strong> • Formule {plan.tierName}
+              <p className="text-xs text-gray-400">
+                Membre : <strong className="text-gray-200">{userEmail}</strong> · Formule {plan.tierName}
               </p>
             </div>
 
-            {/* Actions Bar */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setShowNutritionModal(true)}
-                className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-xl text-xs font-bold hover:bg-emerald-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Utensils className="w-4 h-4 text-emerald-400" />
-                <span>{t.nutritionGuide}</span>
-              </button>
+            <NotificationCenter
+              userEmail={userEmail || ""}
+              onMarkWorkoutDone={handleMarkWorkoutDoneFromNotif}
+              onRescheduleWorkout={handleRescheduleWorkoutFromNotif}
+            />
+          </div>
 
-              <button
-                onClick={() => setShowFaqModal(true)}
-                className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-3 py-2 rounded-xl text-xs font-bold hover:bg-blue-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <HelpCircle className="w-4 h-4 text-blue-400" />
-                <span>{t.faqSupport}</span>
-              </button>
+          {/* Actions Bar — groupée et simplifiée */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              onClick={() => setShowNutritionModal(true)}
+              className="bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Utensils className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{t.nutritionGuide}</span>
+            </button>
 
-              <button
-                onClick={() => window.print()}
-                className="bg-white/5 text-gray-300 border border-white/10 px-3 py-2 rounded-xl text-xs font-bold hover:bg-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
-                title="Imprimer le programme"
-              >
-                <Printer className="w-4 h-4" />
-                <span className="hidden sm:inline">{t.printPlan}</span>
-              </button>
+            <button
+              onClick={() => setShowFaqModal(true)}
+              className="bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-blue-400" />
+              <span>{t.faqSupport}</span>
+            </button>
 
-              <button
-                onClick={() => setRemindersEnabled(!remindersEnabled)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                  remindersEnabled
-                    ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                    : "bg-white/5 text-gray-400 border-white/10"
-                }`}
-              >
-                <Bell className="w-4 h-4" />
-                <span className="hidden sm:inline">{remindersEnabled ? t.remindersActive : t.enableReminders}</span>
-              </button>
-            </div>
+            <button
+              onClick={() => window.print()}
+              className="bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Imprimer le programme"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t.printPlan}</span>
+            </button>
           </div>
         </div>
 
@@ -199,6 +291,32 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
         {/* TAB 1: WORKOUTS SCHEDULE */}
         {activeTab === "WORKOUTS" && (
           <div className="space-y-6">
+            {/* Calendrier de suivi — début / fin du programme */}
+            <div className="bg-[#15151C] border border-white/[0.06] rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#FF5500]/15 flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5 text-[#FF5500]" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Début du programme</p>
+                  <p className="text-sm font-bold text-white">{formatFrDate(programStartDate)}</p>
+                </div>
+              </div>
+              <div className="w-px h-8 bg-white/10 hidden sm:block" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+                  <Award className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fin prévue</p>
+                  <p className="text-sm font-bold text-white">{formatFrDate(programEndDate)}</p>
+                </div>
+              </div>
+              <div className="ml-auto text-[11px] font-bold text-gray-400 bg-white/[0.06] px-3 py-1.5 rounded-full">
+                Semaine {currentProgramWeek} / {totalProgramWeeks}
+              </div>
+            </div>
+
             {/* 8-Week Progressive Overload Phase Selector */}
             {plan.weeksProgression && plan.weeksProgression.length > 0 && (
               <div className="bg-[#16161E] border border-white/10 rounded-3xl p-5 space-y-4 shadow-xl">
@@ -391,6 +509,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
           initialExerciseIdx={startExerciseIdx}
           language={language}
           onClose={() => setIsGuidedWorkoutActive(false)}
+          onCheckEquipment={(exercise) => setCheckingEquipmentExercise(exercise)}
           onWorkoutCompleted={() => {
             if (!completedDays.includes(currentDay.dayNumber)) {
               setCompletedDays([...completedDays, currentDay.dayNumber]);
@@ -428,8 +547,30 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
       {showNutritionModal && (
         <NutritionGuideModal
           userAnswers={plan.userAnswers}
-          onClose={() => setShowNutritionModal(false)}
+          onClose={handleAdvanceToNextDayAfterNutrition}
         />
+      )}
+
+      {/* Notification de changement de semaine — apparaît automatiquement en enchaînement */}
+      {weekTransitionBanner !== null && (
+        <div className="fixed inset-0 z-[200] bg-black/85 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-gradient-to-br from-[#1A1A24] to-[#0D0D11] border border-[#FF5500]/40 rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-2xl shadow-[#FF5500]/20 animate-in zoom-in-95 duration-300">
+            <div className="text-5xl">🔥</div>
+            <h2 className="text-2xl font-black uppercase text-white">
+              Semaine {weekTransitionBanner} commence !
+            </h2>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              Nouveau bloc de progression : intensité et exercices ajustés pour continuer à
+              transformer ton physique. Tu avances, continue comme ça 💪
+            </p>
+            <button
+              onClick={() => setWeekTransitionBanner(null)}
+              className="w-full bg-[#FF5500] hover:bg-[#FF6A1F] text-white font-bold px-4 py-3 rounded-xl text-sm transition-colors cursor-pointer"
+            >
+              C'est parti
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import { FullPlanDashboard } from "./components/FullPlanDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { AiCoachChat } from "./components/AiCoachChat";
 import { FaqAndSupportModal } from "./components/FaqAndSupportModal";
+import { GeneratingPlanScreen } from "./components/GeneratingPlanScreen";
 import { Language } from "./utils/translator";
 import { generateTrainingPlan, generateTrainingPlanAsync } from "./data/mockPlanGenerator";
 import { Bot, X } from "lucide-react";
@@ -40,6 +41,8 @@ export default function App() {
 
   // Current Generated Training Plan
   const [generatedPlan, setGeneratedPlan] = useState<TrainingPlan | null>(null);
+  const [generationFailed, setGenerationFailed] = useState(false);
+  const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<UserAnswers | null>(null);
 
   // Restauration automatique de session — si l'utilisateur a déjà payé et qu'il revient
   // sur l'app (fermeture/réouverture du navigateur), on le renvoie DIRECTEMENT à son plan
@@ -74,11 +77,27 @@ export default function App() {
     setCurrentStep("QUESTIONNAIRE");
   };
 
-  // Step 3 (Questionnaire) -> Step 4 (Aha Preview)
+  // Step 3 (Questionnaire) -> Step 4 (Aha Preview) — avec vrai écran de chargement,
+  // timeout réseau, et gestion d'erreur propre (plus de "ça bug et revient en arrière" silencieux).
   const handleQuestionnaireSubmit = async (answers: UserAnswers) => {
     setUserAnswers(answers);
+    setLastSubmittedAnswers(answers);
+    setGenerationFailed(false);
+    setCurrentStep("GENERATING");
 
-    // Trigger AI photo analysis API call
+    // Empêche un appel réseau bloqué indéfiniment (ex: serveur qui se réveille sur Render)
+    // de laisser l'utilisateur devant un écran figé sans aucune limite de temps.
+    const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        return res;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
     let analysisData = {
       morphologyType: "Athlétique / Mesomorphe Ciblé",
       estimatedBodyFat: "14-16%",
@@ -91,26 +110,42 @@ export default function App() {
 
     if (selectedPhotoUrl) {
       try {
-        const res = await fetch("/api/ai/analyze-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            photoBase64: selectedPhotoUrl,
-            questionnaire: answers
-          })
-        });
+        const res = await fetchWithTimeout(
+          "/api/ai/analyze-photo",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ photoBase64: selectedPhotoUrl, questionnaire: answers })
+          },
+          20000
+        );
         const data = await res.json();
         if (data.analysis) {
           analysisData = data.analysis;
         }
       } catch (err) {
-        console.error("AI photo scan error:", err);
+        // On continue avec l'analyse par défaut plutôt que de bloquer l'utilisateur —
+        // l'analyse photo est un bonus, pas une étape qui doit pouvoir tout faire planter.
+        console.warn("Analyse photo indisponible, on continue avec les valeurs par défaut:", err);
       }
     }
 
-    const newPlan = await generateTrainingPlanAsync("performance", answers, analysisData);
-    setGeneratedPlan(newPlan);
-    setCurrentStep("AHA_PREVIEW");
+    try {
+      const newPlan = await generateTrainingPlanAsync("performance", answers, analysisData);
+      setGeneratedPlan(newPlan);
+      setCurrentStep("AHA_PREVIEW");
+    } catch (err) {
+      console.error("Échec de la génération du plan:", err);
+      setGenerationFailed(true);
+    }
+  };
+
+  const handleRetryGeneration = () => {
+    if (lastSubmittedAnswers) {
+      handleQuestionnaireSubmit(lastSubmittedAnswers);
+    } else {
+      setCurrentStep("QUESTIONNAIRE");
+    }
   };
 
   // Step 4 (Aha Preview) -> Step 5 (Paywall)
@@ -187,6 +222,10 @@ export default function App() {
             onBack={() => setCurrentStep("PHOTO")}
             language={language}
           />
+        )}
+
+        {currentStep === "GENERATING" && (
+          <GeneratingPlanScreen hasError={generationFailed} onRetry={handleRetryGeneration} />
         )}
 
         {currentStep === "AHA_PREVIEW" && generatedPlan && (

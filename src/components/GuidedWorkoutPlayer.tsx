@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { WorkoutDay, ExerciseItem } from "../types";
 import { StickFigureWarmup } from "./StickFigureWarmup";
+import { ExercisePoseIllustration, classifyExercisePose } from "./ExercisePoseIllustration";
 import {
   X,
   Play,
@@ -34,6 +35,7 @@ interface GuidedWorkoutPlayerProps {
   language: Language;
   onClose: () => void;
   onWorkoutCompleted: () => void;
+  onCheckEquipment?: (exercise: ExerciseItem) => void;
 }
 
 type WorkoutPhase = "WARMUP" | "EXERCISE" | "REST" | "COMPLETE";
@@ -75,7 +77,8 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
   initialExerciseIdx = 0,
   language,
   onClose,
-  onWorkoutCompleted
+  onWorkoutCompleted,
+  onCheckEquipment
 }) => {
   const t = UI_LABELS[language];
   const exercises = workoutDay.exercises || [];
@@ -97,12 +100,17 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
   // ait besoin d'aller le chercher dans le chat. Ça rend la séance vivante, comme un vrai coach présent.
   // File d'attente : si plusieurs messages se déclenchent au même moment, ils s'affichent
   // l'un après l'autre au lieu de s'écraser silencieusement.
+  interface CoachQueueItem {
+    text: string;
+    isEquipmentCheck?: boolean;
+  }
   const [coachMessage, setCoachMessage] = useState<string | null>(null);
-  const coachQueueRef = useRef<string[]>([]);
+  const coachQueueRef = useRef<CoachQueueItem[]>([]);
   const coachTimeoutRef = useRef<number | null>(null);
   const firedCoachEventsRef = useRef<Set<string>>(new Set());
   const [isCoachSpeaking, setIsCoachSpeaking] = useState(false);
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
+  const [awaitingEquipmentConfirm, setAwaitingEquipmentConfirm] = useState(false);
 
   const runPreStartCountdown = () => {
     setCountdownValue(3);
@@ -122,70 +130,77 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
     window.setTimeout(step, 700);
   };
 
+  const handleAfterCoachSpeech = (wasEquipmentCheck: boolean) => {
+    if (coachQueueRef.current.length > 0) {
+      showNextCoachMessage();
+      return;
+    }
+    setIsCoachSpeaking(false);
+    if (wasEquipmentCheck) {
+      // On ne lance PAS le décompte tout de suite : on attend une vraie réponse
+      // de l'utilisateur (boutons) avant de reprendre la séance.
+      setAwaitingEquipmentConfirm(true);
+    } else {
+      setCoachMessage(null);
+      runPreStartCountdown();
+    }
+  };
+
   const showNextCoachMessage = () => {
     const next = coachQueueRef.current.shift();
     if (!next) {
       setCoachMessage(null);
       coachTimeoutRef.current = null;
       setIsCoachSpeaking(false);
-      // Fin de tous les messages en attente : le coach a fini de parler,
-      // on lance le décompte 3-2-1 avant de reprendre le chrono normalement.
       runPreStartCountdown();
       return;
     }
-    setCoachMessage(next);
+    setCoachMessage(next.text);
     setIsCoachSpeaking(true);
+    const isLastInQueueAfterThis = coachQueueRef.current.length === 0;
     const spoke = speakText(
-      next,
+      next.text,
       () => setIsCoachSpeaking(true),
-      () => {
-        // Le coach a fini cette phrase — on enchaîne sur le message suivant s'il y en a un
-        if (coachQueueRef.current.length > 0) {
-          showNextCoachMessage();
-        } else {
-          setIsCoachSpeaking(false);
-          setCoachMessage(null);
-          runPreStartCountdown();
-        }
-      },
+      () => handleAfterCoachSpeech(!!next.isEquipmentCheck && isLastInQueueAfterThis),
       () => {
         // La synthèse vocale a échoué (navigateur non compatible) — on ne bloque pas
         // l'utilisateur pour autant, on laisse le message affiché quelques secondes.
-        window.setTimeout(() => {
-          if (coachQueueRef.current.length > 0) {
-            showNextCoachMessage();
-          } else {
-            setIsCoachSpeaking(false);
-            setCoachMessage(null);
-            runPreStartCountdown();
-          }
-        }, 3000);
+        window.setTimeout(() => handleAfterCoachSpeech(!!next.isEquipmentCheck && isLastInQueueAfterThis), 3000);
       }
     );
     if (!spoke) {
       // Speech Synthesis indisponible dans ce navigateur : on affiche le message
       // le temps de le lire, puis on enchaîne comme si la voix avait parlé.
-      window.setTimeout(() => {
-        if (coachQueueRef.current.length > 0) {
-          showNextCoachMessage();
-        } else {
-          setIsCoachSpeaking(false);
-          setCoachMessage(null);
-          runPreStartCountdown();
-        }
-      }, 3200);
+      window.setTimeout(() => handleAfterCoachSpeech(!!next.isEquipmentCheck && isLastInQueueAfterThis), 3200);
     }
   };
 
-  const triggerCoachMessage = (text: string, eventKey?: string) => {
+  const triggerCoachMessage = (text: string, eventKey?: string, isEquipmentCheck?: boolean) => {
     if (eventKey) {
       if (firedCoachEventsRef.current.has(eventKey)) return;
       firedCoachEventsRef.current.add(eventKey);
     }
-    coachQueueRef.current.push(text);
-    if (!isCoachSpeaking && coachMessage === null && countdownValue === null) {
+    coachQueueRef.current.push({ text, isEquipmentCheck });
+    if (!isCoachSpeaking && coachMessage === null && countdownValue === null && !awaitingEquipmentConfirm) {
       showNextCoachMessage();
     }
+  };
+
+  const handleEquipmentConfirmYes = () => {
+    setAwaitingEquipmentConfirm(false);
+    setCoachMessage(null);
+    runPreStartCountdown();
+  };
+
+  const handleEquipmentConfirmNo = () => {
+    setAwaitingEquipmentConfirm(false);
+    setCoachMessage(null);
+    if (onCheckEquipment && currentExercise) {
+      onCheckEquipment(currentExercise);
+    }
+    // On laisse le temps à l'utilisateur de consulter l'alternative proposée,
+    // puis on reprend normalement la séance.
+    runPreStartCountdown();
   };
 
   // Message d'accueil au tout début de l'échauffement
@@ -204,8 +219,9 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
       // à voix haute au lieu de laisser l'utilisateur découvrir seul qu'il n'a pas l'outil.
       const exName = exercises[currentExIdx]?.name || "cet exercice";
       triggerCoachMessage(
-        `Prochain mouvement : ${exName}. As-tu le matériel nécessaire ? Sinon, appuie sur "As-tu cet outil" pour une alternative.`,
-        `equipment-check-${currentExIdx}`
+        `Prochain mouvement : ${exName}. As-tu tout le matériel nécessaire ?`,
+        `equipment-check-${currentExIdx}`,
+        true
       );
     }
 
@@ -263,12 +279,40 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
   const currentExercise: ExerciseItem | undefined = exercises[currentExIdx];
 
   // Helper to set timer according to phase
+  // Calcule un temps réaliste selon le TYPE d'exercice : si c'est déjà exprimé en temps
+  // ("30 sec", "40 sec"), on garde ce temps tel quel. Si c'est un nombre de répétitions
+  // ("15 reps", "12 reps (8/jambe)"), on estime une durée réaliste (~2,3 sec par répétition,
+  // tempo contrôlé) au lieu d'un chrono fixe de 45 sec qui ne correspondait à rien.
+  const estimateExerciseDurationSec = (repsLabel?: string): number => {
+    if (!repsLabel) return 45;
+    const lower = repsLabel.toLowerCase();
+
+    const secMatch = lower.match(/(\d+)\s*sec/);
+    if (secMatch) {
+      return Math.max(10, parseInt(secMatch[1], 10));
+    }
+    const minMatch = lower.match(/(\d+)\s*min/);
+    if (minMatch) {
+      return Math.max(10, parseInt(minMatch[1], 10) * 60);
+    }
+
+    const repsMatch = lower.match(/(\d+)/);
+    if (repsMatch) {
+      const repsCount = parseInt(repsMatch[1], 10);
+      // Tempo moyen contrôlé (montée + descente) ~2.3 sec par répétition
+      const estimated = Math.round(repsCount * 2.3);
+      return Math.min(90, Math.max(15, estimated));
+    }
+
+    return 45;
+  };
+
   const setupPhaseTimer = (newPhase: WorkoutPhase, exIdx: number, setNum: number, warmupIdx: number = 0) => {
     if (newPhase === "WARMUP") {
       setTimeLeft(WARMUP_STEPS[warmupIdx]?.durationSec || 30);
     } else if (newPhase === "EXERCISE") {
-      // 45 seconds duration per set exercise work
-      setTimeLeft(45);
+      const ex = exercises[exIdx];
+      setTimeLeft(estimateExerciseDurationSec(ex?.reps));
     } else if (newPhase === "REST") {
       const ex = exercises[exIdx];
       setTimeLeft(ex?.restSeconds || 45);
@@ -279,7 +323,7 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
   // le décompte 3-2-1 est en cours, pour que l'utilisateur ne soit jamais pris de court.
   useEffect(() => {
     let interval: any = null;
-    if (isRunning && timeLeft > 0 && phase !== "COMPLETE" && !isCoachSpeaking && countdownValue === null) {
+    if (isRunning && timeLeft > 0 && phase !== "COMPLETE" && !isCoachSpeaking && countdownValue === null && !awaitingEquipmentConfirm) {
       interval = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev === 4 || prev === 3 || prev === 2) {
@@ -290,12 +334,12 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
           return prev - 1;
         });
       }, 1000);
-    } else if (isRunning && timeLeft === 0 && phase !== "COMPLETE" && !isCoachSpeaking && countdownValue === null) {
+    } else if (isRunning && timeLeft === 0 && phase !== "COMPLETE" && !isCoachSpeaking && countdownValue === null && !awaitingEquipmentConfirm) {
       // AUTOMATIC ADVANCE WITHOUT CLICKS!
       handleAutoAdvancePhase();
     }
     return () => clearInterval(interval);
-  }, [isRunning, timeLeft, phase, currentExIdx, currentSet, isCoachSpeaking, countdownValue]);
+  }, [isRunning, timeLeft, phase, currentExIdx, currentSet, isCoachSpeaking, countdownValue, awaitingEquipmentConfirm]);
 
   // Handle Automatic Phase Transitions
   const handleAutoAdvancePhase = () => {
@@ -420,16 +464,36 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
       {/* Bannière Coach IA Proactif — apparaît automatiquement, sans action de l'utilisateur */}
       {coachMessage && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] max-w-md w-[92%] animate-in slide-in-from-top-4 fade-in duration-300">
-          <div className="bg-gradient-to-r from-[#FF5500] to-[#FF8A00] rounded-2xl px-4 py-3 shadow-2xl shadow-[#FF5500]/30 flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center shrink-0 mt-0.5">
-              <span className={`text-sm ${isCoachSpeaking ? "animate-pulse" : ""}`}>🤖</span>
+          <div className="bg-gradient-to-r from-[#FF5500] to-[#FF8A00] rounded-2xl px-4 py-3 shadow-2xl shadow-[#FF5500]/30">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center shrink-0 mt-0.5">
+                <span className={`text-sm ${isCoachSpeaking ? "animate-pulse" : ""}`}>🤖</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wider text-black/70 mb-0.5">
+                  Coach IA FysiqForge {isCoachSpeaking && "· en train de parler..."}
+                </p>
+                <p className="text-sm font-bold text-black leading-snug">{coachMessage}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wider text-black/70 mb-0.5">
-                Coach IA FysiqForge {isCoachSpeaking && "· en train de parler..."}
-              </p>
-              <p className="text-sm font-bold text-black leading-snug">{coachMessage}</p>
-            </div>
+
+            {/* Vraie bulle interactive : le coach attend une réponse avant de continuer */}
+            {awaitingEquipmentConfirm && (
+              <div className="flex gap-2 mt-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <button
+                  onClick={handleEquipmentConfirmYes}
+                  className="flex-1 bg-black text-white font-bold text-xs py-2.5 rounded-xl hover:bg-black/80 transition-colors cursor-pointer"
+                >
+                  ✅ J'ai tout, c'est bon
+                </button>
+                <button
+                  onClick={handleEquipmentConfirmNo}
+                  className="flex-1 bg-white text-black font-bold text-xs py-2.5 rounded-xl hover:bg-white/80 transition-colors cursor-pointer"
+                >
+                  ❌ Il me manque un truc
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -547,12 +611,14 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
                 key={`stick-${currentWarmupIdx}`}
                 move={WARMUP_STEPS[currentWarmupIdx]?.stickFigureMove || "shoulders"}
               />
+            ) : phase === "REST" ? (
+              <div className="w-full h-full flex items-center justify-center bg-[#1A120C]">
+                <span className="text-6xl animate-pulse">😮‍💨</span>
+              </div>
             ) : (
-              <img
-                key={`src-${phase}-${currentExIdx}`}
-                src={phase === "REST" ? REST_IMAGE : currentExercise?.illustrationUrl || REST_IMAGE}
-                alt={currentExercise?.name || "Exercise"}
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 animate-image-fade"
+              <ExercisePoseIllustration
+                key={`pose-${currentExIdx}`}
+                pose={classifyExercisePose(currentExercise?.name || "", currentExercise?.muscleGroup)}
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />

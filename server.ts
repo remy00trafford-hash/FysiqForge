@@ -1,4 +1,160 @@
 import express from "express";
+
+// ============================================================================
+// SYSTÈME DE RAPPELS INTELLIGENT — lié directement au programme généré par l'IA,
+// pas des rappels génériques. Architecture : workouts / reminders / notifications,
+// vérification par cron toutes les minutes, emails via Resend, centre de
+// notifications persistantes côté client.
+//
+// ⚠️ Note honnête : ces "tables" sont en mémoire (Map), pas une vraie base de
+// données persistante — elles se réinitialisent si le serveur redémarre. Pour un
+// vrai produit en production, il faudrait les migrer vers une vraie base
+// (ex: Supabase/Postgres), mais l'architecture ci-dessous est déjà pensée pour
+// être facilement transposée telle quelle vers de vraies tables SQL plus tard.
+// ============================================================================
+
+interface WorkoutRecord {
+  id: string;
+  email: string;
+  dayNumber: number;
+  title: string;
+  focus: string;
+  durationMin: number;
+  objective: string;
+  scheduledAt: string; // ISO
+  status: "scheduled" | "done" | "missed" | "rescheduled";
+}
+
+interface ReminderRecord {
+  id: string;
+  email: string;
+  workoutId: string;
+  scheduledAt: string; // ISO
+  status: "pending" | "done" | "missed";
+  dueNotified: boolean;
+  missedNotified: boolean;
+}
+
+interface NotificationRecord {
+  id: string;
+  email: string;
+  workoutId: string | null;
+  type: "due" | "missed" | "recovery" | "weekly_summary";
+  title: string;
+  message: string;
+  createdAt: string; // ISO
+  read: boolean;
+  resolved: boolean; // reste true tant que la séance liée n'est pas faite/reprogrammée
+}
+
+const workoutsTable = new Map<string, WorkoutRecord>();
+const remindersTable = new Map<string, ReminderRecord>();
+const notificationsTable = new Map<string, NotificationRecord>();
+
+let recordIdCounter = 1;
+function nextId(prefix: string) {
+  recordIdCounter += 1;
+  return `${prefix}_${Date.now()}_${recordIdCounter}`;
+}
+
+function getUserWorkouts(email: string) {
+  return [...workoutsTable.values()].filter((w) => w.email === email);
+}
+function getUserReminders(email: string) {
+  return [...remindersTable.values()].filter((r) => r.email === email);
+}
+function getUserNotifications(email: string) {
+  return [...notificationsTable.values()]
+    .filter((n) => n.email === email)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+// --- ENVOI D'EMAIL VIA RESEND ---
+// Si aucune clé RESEND_API_KEY n'est configurée sur le serveur, on log un
+// avertissement et on continue sans planter — l'email est un bonus, pas un
+// blocage pour le fonctionnement du reste de l'app.
+async function sendReminderEmail(to: string, subject: string, html: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn(`[FysiqForge] RESEND_API_KEY absente — email non envoyé à ${to}: "${subject}"`);
+    return;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || "FysiqForge Coach <coach@fysiqforge.app>",
+        to: [to],
+        subject,
+        html
+      })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[FysiqForge] Échec envoi email Resend (${res.status}):`, errText);
+    }
+  } catch (e) {
+    console.error("[FysiqForge] Erreur réseau lors de l'envoi de l'email:", e);
+  }
+}
+
+function buildDueEmailHtml(workout: WorkoutRecord, appUrl: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="color:#FF5500;">🔥 C'est l'heure de ta séance !</h2>
+      <p><strong>${workout.title}</strong></p>
+      <p>Durée estimée : ${workout.durationMin} minutes<br/>Objectif : ${workout.objective}</p>
+      <a href="${appUrl}" style="display:inline-block;background:#FF5500;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px;">
+        Démarrer ma séance
+      </a>
+    </div>`;
+}
+
+function buildMissedEmailHtml(workout: WorkoutRecord, appUrl: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="color:#FF5500;">Ta séance d'hier n'a pas été faite</h2>
+      <p><strong>${workout.title}</strong> était prévue et n'a pas été marquée comme terminée.</p>
+      <p>Pas grave — la régularité prime sur la perfection. Tu veux la reprogrammer ?</p>
+      <a href="${appUrl}" style="display:inline-block;background:#FF5500;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px;">
+        Reprogrammer ma séance
+      </a>
+    </div>`;
+}
+
+function buildRecoveryEmailHtml(missedCount: number, appUrl: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="color:#FF5500;">On reprend ensemble ? 💪</h2>
+      <p>Tu as manqué ${missedCount} séances d'affilée. Ça arrive à tout le monde — l'essentiel c'est de reprendre, pas d'avoir été parfait.</p>
+      <a href="${appUrl}" style="display:inline-block;background:#FF5500;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px;">
+        Reprendre mon programme
+      </a>
+    </div>`;
+}
+
+function buildWeeklySummaryEmailHtml(done: number, missed: number, appUrl: string) {
+  const total = done + missed || 1;
+  const pct = Math.round((done / total) * 100);
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2 style="color:#FF5500;">Ton résumé de la semaine</h2>
+      <p>✅ Séances réalisées : <strong>${done}</strong></p>
+      <p>❌ Séances manquées : <strong>${missed}</strong></p>
+      <p>Progression cette semaine : <strong>${pct}%</strong></p>
+      <a href="${appUrl}" style="display:inline-block;background:#FF5500;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px;">
+        Voir mon programme
+      </a>
+    </div>`;
+}
+
+const APP_URL = process.env.APP_URL || "https://fysiqforge.onrender.com";
+
+
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
@@ -197,19 +353,19 @@ function inferMuscleKey(input: string): string {
 // requête groupée à Gemini, pour remplacer le bricolage de remplacement mot-à-mot qui
 // produisait un charabia franglais ("position one in place on your poitrine").
 async function translateInstructionsBatch(
-  entries: { key: string; steps: string[] }[]
-): Promise<Record<string, string[]>> {
+  entries: { key: string; steps: string[]; name?: string }[]
+): Promise<Record<string, { steps: string[]; name?: string }>> {
   if (entries.length === 0) return {};
 
   try {
     const ai = getGeminiClient();
     if (!ai) return {};
 
-    const inputPayload = entries.map((e) => ({ key: e.key, steps: e.steps }));
+    const inputPayload = entries.map((e) => ({ key: e.key, steps: e.steps, name: e.name }));
 
     const response = await ai.models.generateContent({
       model: "gemini-3.6-flash",
-      contents: `Traduis en français naturel et fluide (pas mot-à-mot) chaque tableau "steps" ci-dessous, qui décrit les étapes d'exécution d'un exercice de musculation. Garde le même nombre de phrases dans le même ordre, ton clair et direct comme un coach sportif francophone. Réponds UNIQUEMENT avec un tableau JSON de la forme [{"key": "...", "steps": ["...","..."]}], sans aucun texte autour.\n\nDonnées à traduire :\n${JSON.stringify(inputPayload)}`,
+      contents: `Traduis en français naturel et fluide (pas mot-à-mot) le champ "name" (nom de l'exercice de musculation, garde-le court et précis, ton coach sportif) et chaque tableau "steps" (étapes d'exécution) ci-dessous. Garde le même nombre de phrases dans le même ordre pour "steps". Réponds UNIQUEMENT avec un tableau JSON de la forme [{"key": "...", "name": "...", "steps": ["...","..."]}], sans aucun texte autour.\n\nDonnées à traduire :\n${JSON.stringify(inputPayload)}`,
       config: {
         responseMimeType: "application/json",
         temperature: 0.3,
@@ -218,11 +374,11 @@ async function translateInstructionsBatch(
     });
 
     const parsed = JSON.parse(response.text || "[]");
-    const map: Record<string, string[]> = {};
+    const map: Record<string, { steps: string[]; name?: string }> = {};
     if (Array.isArray(parsed)) {
       parsed.forEach((item: any) => {
         if (item?.key && Array.isArray(item.steps)) {
-          map[item.key] = item.steps;
+          map[item.key] = { steps: item.steps, name: item.name };
         }
       });
     }
@@ -304,13 +460,13 @@ async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
           ? matched.instructions
           : ex.executionSteps || [];
 
-        // Ces instructions viennent de la base ExerciseDB, donc en ANGLAIS —
+        // Ces instructions ET le nom viennent de la base ExerciseDB, donc en ANGLAIS —
         // on les met en file pour une vraie traduction groupée juste après,
         // au lieu de les afficher telles quelles ou de bricoler un remplacement mot-à-mot.
         exerciseCounter += 1;
         const translationKey = `ex-${exerciseCounter}`;
-        if (rawSteps.length > 0) {
-          rawInstructionsToTranslate.push({ key: translationKey, steps: rawSteps });
+        if (rawSteps.length > 0 || matched.name) {
+          rawInstructionsToTranslate.push({ key: translationKey, steps: rawSteps, name: matched.name });
         }
 
         return {
@@ -340,10 +496,10 @@ async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
     if (!day.exercises || !Array.isArray(day.exercises)) return;
     day.exercises = day.exercises.map((ex: any) => {
       if (ex._translationKey && translatedMap[ex._translationKey]) {
-        ex.executionSteps = translatedMap[ex._translationKey];
-        if (ex.tips && translatedMap[ex._translationKey][0]) {
-          // Garde le tips original s'il venait déjà de l'IA (souvent déjà en français),
-          // sinon utilise la première étape traduite comme repli.
+        const translated = translatedMap[ex._translationKey];
+        ex.executionSteps = translated.steps;
+        if (translated.name) {
+          ex.name = translated.name;
         }
       }
       delete ex._translationKey;
@@ -589,6 +745,21 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
     { name: "Gainage Latéral", muscleGroup: "Obliques & Core", sets: 3, reps: "30-45 sec/côté", restSeconds: 45, tips: "Aligne épaule-hanche-cheville, ne laisse pas tomber le bassin." }
   ];
 
+  // Pool "complémentaire" — exercices courts (isolation, gainage, finishers) réutilisés
+  // pour compléter chaque jour de salle jusqu'au minimum de 15 exercices, sans gonfler
+  // démesurément la durée totale (moins de séries / repos plus courts que les mouvements principaux).
+  const complementaryFinisherPool = [
+    { name: "Crunchs Poulie Haute", muscleGroup: "Abdominaux", sets: 2, reps: "15 reps", restSeconds: 30, tips: "Enroule le buste vers le bas sans tirer avec les bras." },
+    { name: "Relevés de Jambes Suspendu", muscleGroup: "Abdominaux Inférieurs", sets: 2, reps: "12 reps", restSeconds: 30, tips: "Contrôle la descente, évite de te balancer." },
+    { name: "Extension Mollets Debout", muscleGroup: "Mollets", sets: 2, reps: "18 reps", restSeconds: 30, tips: "Amplitude complète, pause en haut de la contraction." },
+    { name: "Curl Marteau Câble", muscleGroup: "Avant-bras & Biceps", sets: 2, reps: "14 reps", restSeconds: 30, tips: "Coudes fixes, prise neutre tout du long." },
+    { name: "Kickback Triceps Poulie", muscleGroup: "Triceps (Isolation)", sets: 2, reps: "14 reps", restSeconds: 30, tips: "Coude collé au corps, extension complète derrière toi." },
+    { name: "Oiseau (Élévations Arrière)", muscleGroup: "Épaules Postérieures", sets: 2, reps: "15 reps", restSeconds: 30, tips: "Buste penché, tire les coudes vers l'extérieur." },
+    { name: "Planche Gainage", muscleGroup: "Core Complet", sets: 2, reps: "40 sec", restSeconds: 30, tips: "Corps aligné de la tête aux talons, respire calmement." },
+    { name: "Good Morning Léger", muscleGroup: "Lombaires & Ischios", sets: 2, reps: "12 reps", restSeconds: 40, tips: "Charge légère, dos plat, bascule le buste vers l'avant." },
+    { name: "Rotation Russe (Russian Twist)", muscleGroup: "Obliques", sets: 2, reps: "20 reps", restSeconds: 30, tips: "Pieds légèrement levés pour plus d'intensité si possible." }
+  ];
+
   // Style "circuit maison" — beaucoup d'exercices courts au poids du corps, comme les
   // apps de sport à la maison (Home Workout), activé quand l'utilisateur n'a pas de matériel.
   const isBodyweightFallback = /poids du corps|sans matériel|maison/i.test(equipment);
@@ -621,23 +792,33 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
     return rotated.slice(0, count);
   };
 
+  const padToFifteen = (baseArr: any[], dayIdx: number) => {
+    if (baseArr.length >= 15) return baseArr;
+    const needed = 15 - baseArr.length;
+    const rotatedFinishers = [
+      ...complementaryFinisherPool.slice(dayIdx % complementaryFinisherPool.length),
+      ...complementaryFinisherPool.slice(0, dayIdx % complementaryFinisherPool.length)
+    ];
+    return [...baseArr, ...rotatedFinishers.slice(0, needed)];
+  };
+
   const dayTemplates = isBodyweightFallback
     ? Array.from({ length: 6 }).map((_, idx) => ({
         title: idx % 2 === 0
           ? `Circuit Full Body Intensif #${idx + 1} (${targetZone})`
           : `Circuit Cardio & Renforcement #${idx + 1}`,
         focus: "Corps Entier — Circuit au poids du corps",
-        exercises: shuffleCircuitForDay(idx, 14),
+        exercises: shuffleCircuitForDay(idx, 15),
         duration: 30,
         cal: 260
       }))
     : [
-    { title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`, focus: "Pectoraux & Triceps", exercises: sampleExercisesPush, duration: 50, cal: 440 },
-    { title: "Dos, Biceps & Posture (Pull Titan)", focus: "Grand Dorsal & Biceps", exercises: sampleExercisesPull, duration: 55, cal: 460 },
-    { title: "Bas du Corps & Gainage (Legs Power)", focus: "Quadriceps, Ischios & Abdominaux", exercises: sampleExercisesLegs, duration: 50, cal: 510 },
-    { title: `Hypertrophie Ciblée (${targetZone})`, focus: `${targetZone} & Isolation`, exercises: sampleExercisesUpperIsolation, duration: 45, cal: 420 },
-    { title: "Full Body Force & Métabolique", focus: "Corps Entier", exercises: sampleExercisesFullBody, duration: 48, cal: 480 },
-    { title: "Push/Pull Complémentaire & Core", focus: "Haut du Corps & Sangle Abdominale", exercises: [...sampleExercisesPush.slice(0, 3), ...sampleExercisesPull.slice(0, 3)], duration: 52, cal: 470 }
+    { title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`, focus: "Pectoraux & Triceps", exercises: padToFifteen(sampleExercisesPush, 0), duration: 65, cal: 500 },
+    { title: "Dos, Biceps & Posture (Pull Titan)", focus: "Grand Dorsal & Biceps", exercises: padToFifteen(sampleExercisesPull, 1), duration: 68, cal: 520 },
+    { title: "Bas du Corps & Gainage (Legs Power)", focus: "Quadriceps, Ischios & Abdominaux", exercises: padToFifteen(sampleExercisesLegs, 2), duration: 65, cal: 560 },
+    { title: `Hypertrophie Ciblée (${targetZone})`, focus: `${targetZone} & Isolation`, exercises: padToFifteen(sampleExercisesUpperIsolation, 3), duration: 60, cal: 480 },
+    { title: "Full Body Force & Métabolique", focus: "Corps Entier", exercises: padToFifteen(sampleExercisesFullBody, 4), duration: 63, cal: 530 },
+    { title: "Push/Pull Complémentaire & Core", focus: "Haut du Corps & Sangle Abdominale", exercises: padToFifteen([...sampleExercisesPush.slice(0, 3), ...sampleExercisesPull.slice(0, 3)], 5), duration: 64, cal: 510 }
   ];
 
   const days = dayTemplates.slice(0, numDays).map((tpl, idx) => ({
@@ -705,11 +886,11 @@ app.post("/api/ai/generate-plan", async (req, res) => {
   // sinon une séance durerait plusieurs heures et deviendrait dangereuse/contre-productive.
   const equipmentAnswer = String(userAnswers?.equipment || "").toLowerCase();
   const isBodyweightStyle = equipmentAnswer.includes("poids du corps") || equipmentAnswer.includes("sans matériel") || equipmentAnswer.includes("maison");
-  const minExercisesPerDay = isBodyweightStyle ? 12 : 6;
-  const maxExercisesPerDay = isBodyweightStyle ? 18 : 8;
+  const minExercisesPerDay = 15;
+  const maxExercisesPerDay = 20;
   const exerciseStyleGuidance = isBodyweightStyle
-    ? `Séance façon "circuit à la maison" (type app de fitness maison) : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices au poids du corps par jour, chacun COURT (15 à 45 secondes, ou 10-20 répétitions), enchaînés avec peu de repos (20-30 secondes entre chaque). Beaucoup de variété de mouvements (fentes, squats, gainage, mountain climbers, donkey kicks, pompes variées, étirements dynamiques) pour cibler tout le corps sans jamais dépasser 30-35 minutes de séance totale.`
-    : `Séance de musculation en salle avec charges : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices par jour (mouvements composés + isolation), chacun avec 3-4 séries de 8-15 répétitions et 60-120 secondes de repos entre séries, pour une séance réaliste de 45-70 minutes.`;
+    ? `Séance façon "circuit à la maison" (type app de fitness maison) : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices au poids du corps par jour. Pour les exercices comptés en RÉPÉTITIONS (pompes, squats, fentes...), donne un nombre de répétitions clair (ex: "15 reps", "12 reps par jambe") — PAS un temps arbitraire, le nombre de reps EST la mesure. Pour les exercices tenus en position (gainage, wall sit) ou cardio continu (jumping jacks, mountain climbers), donne une durée en secondes (ex: "30 sec", "40 sec"). Peu de repos entre chaque (15-30 secondes). Beaucoup de variété de mouvements (fentes, squats, gainage, mountain climbers, donkey kicks, pompes variées, étirements dynamiques) pour cibler tout le corps.`
+    : `Séance de musculation en salle avec charges : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices par jour. Structure-la en 2 blocs pour rester réaliste en durée : (1) 6-8 exercices PRINCIPAUX (mouvements composés lourds : squat, développé, tirage, soulevé de terre...) avec 3-4 séries de 8-12 répétitions et 60-90 secondes de repos ; (2) le reste en exercices COMPLÉMENTAIRES (isolation, gainage, finishers, mobilité) avec 2-3 séries de 12-20 répétitions et un repos plus court de 30-45 secondes, pour atteindre le total de ${minExercisesPerDay} à ${maxExercisesPerDay} exercices sans rendre la séance interminable. Pour les exercices comptés en répétitions, donne un nombre de reps clair ("10 reps"), pas un temps arbitraire.`;
 
   try {
     const ai = getGeminiClient();
@@ -910,6 +1091,234 @@ app.get("/api/admin/stats", (_req, res) => {
     recentTransactions: mockTransactions
   });
 });
+
+// --- ROUTES DU SYSTÈME DE RAPPELS ---
+
+// Appelée UNE FOIS quand l'utilisateur débloque son plan : génère automatiquement
+// un "workout" + un "reminder" pour CHAQUE séance du programme généré par l'IA.
+app.post("/api/reminders/register-plan", (req, res) => {
+  const { email, weekSchedule, preferredTime, objective } = req.body;
+  if (!email || !Array.isArray(weekSchedule)) {
+    return res.status(400).json({ success: false, error: "email et weekSchedule requis" });
+  }
+
+  const [hh, mm] = String(preferredTime || "18:00").split(":").map((n: string) => parseInt(n, 10));
+  const createdWorkoutIds: string[] = [];
+
+  weekSchedule.forEach((day: any, idx: number) => {
+    const scheduledDate = new Date();
+    scheduledDate.setDate(scheduledDate.getDate() + idx);
+    scheduledDate.setHours(hh || 18, mm || 0, 0, 0);
+
+    const workoutId = nextId("workout");
+    const workout: WorkoutRecord = {
+      id: workoutId,
+      email,
+      dayNumber: day.dayNumber || idx + 1,
+      title: day.title || `Séance Jour ${idx + 1}`,
+      focus: day.focus || "Corps entier",
+      durationMin: day.estimatedDurationMin || 45,
+      objective: objective || "Transformation physique",
+      scheduledAt: scheduledDate.toISOString(),
+      status: "scheduled"
+    };
+    workoutsTable.set(workoutId, workout);
+    createdWorkoutIds.push(workoutId);
+
+    const reminderId = nextId("reminder");
+    remindersTable.set(reminderId, {
+      id: reminderId,
+      email,
+      workoutId,
+      scheduledAt: workout.scheduledAt,
+      status: "pending",
+      dueNotified: false,
+      missedNotified: false
+    });
+  });
+
+  console.log(`[FysiqForge] Programme de rappels enregistré pour ${email} — ${createdWorkoutIds.length} séances planifiées.`);
+  res.json({ success: true, workoutIds: createdWorkoutIds });
+});
+
+// Marque une séance comme terminée — résout le rappel ET les notifications liées.
+app.post("/api/reminders/complete", (req, res) => {
+  const { email, workoutId } = req.body;
+  const workout = workoutsTable.get(workoutId);
+  if (workout && workout.email === email) {
+    workout.status = "done";
+    workoutsTable.set(workoutId, workout);
+  }
+  const reminder = [...remindersTable.values()].find((r) => r.workoutId === workoutId && r.email === email);
+  if (reminder) {
+    reminder.status = "done";
+    remindersTable.set(reminder.id, reminder);
+  }
+  notificationsTable.forEach((n) => {
+    if (n.workoutId === workoutId && n.email === email) {
+      n.resolved = true;
+      notificationsTable.set(n.id, n);
+    }
+  });
+  res.json({ success: true });
+});
+
+// Reprogramme une séance manquée à une nouvelle date/heure.
+app.post("/api/reminders/reschedule", (req, res) => {
+  const { email, workoutId, newDateTimeISO } = req.body;
+  const workout = workoutsTable.get(workoutId);
+  if (workout && workout.email === email) {
+    workout.scheduledAt = newDateTimeISO;
+    workout.status = "scheduled";
+    workoutsTable.set(workoutId, workout);
+  }
+  const reminder = [...remindersTable.values()].find((r) => r.workoutId === workoutId && r.email === email);
+  if (reminder) {
+    reminder.scheduledAt = newDateTimeISO;
+    reminder.status = "pending";
+    reminder.dueNotified = false;
+    reminder.missedNotified = false;
+    remindersTable.set(reminder.id, reminder);
+  }
+  notificationsTable.forEach((n) => {
+    if (n.workoutId === workoutId && n.email === email) {
+      n.resolved = true;
+      notificationsTable.set(n.id, n);
+    }
+  });
+  res.json({ success: true });
+});
+
+// Liste des notifications d'un utilisateur, pour le centre de notifications + badge.
+app.get("/api/reminders/notifications", (req, res) => {
+  const email = String(req.query.email || "");
+  res.json({ notifications: getUserNotifications(email) });
+});
+
+// Marque une notification comme lue (n'efface pas, juste "vue").
+app.post("/api/reminders/mark-read", (req, res) => {
+  const { email, notificationId } = req.body;
+  const n = notificationsTable.get(notificationId);
+  if (n && n.email === email) {
+    n.read = true;
+    notificationsTable.set(notificationId, n);
+  }
+  res.json({ success: true });
+});
+
+// --- CRON INTELLIGENT (vérifie toutes les 60 secondes) ---
+function runReminderCron() {
+  const now = new Date();
+
+  // 1) Séances dont l'heure prévue est arrivée -> notification "due" + email
+  remindersTable.forEach((reminder) => {
+    const workout = workoutsTable.get(reminder.workoutId);
+    if (!workout) return;
+    const scheduled = new Date(reminder.scheduledAt);
+
+    if (reminder.status === "pending" && !reminder.dueNotified && now >= scheduled) {
+      const notif: NotificationRecord = {
+        id: nextId("notif"),
+        email: reminder.email,
+        workoutId: workout.id,
+        type: "due",
+        title: "C'est l'heure de ta séance !",
+        message: `${workout.title} — ${workout.durationMin} min. Objectif : ${workout.objective}.`,
+        createdAt: now.toISOString(),
+        read: false,
+        resolved: false // reste active tant que la séance n'est pas marquée faite
+      };
+      notificationsTable.set(notif.id, notif);
+      sendReminderEmail(reminder.email, `🔥 ${workout.title} — c'est l'heure`, buildDueEmailHtml(workout, APP_URL));
+      reminder.dueNotified = true;
+      remindersTable.set(reminder.id, reminder);
+    }
+
+    // 2) Plus de 24h après l'heure prévue et toujours pas fait -> "missed" + proposition de reprogrammation
+    const hoursLate = (now.getTime() - scheduled.getTime()) / (1000 * 60 * 60);
+    if (reminder.status === "pending" && hoursLate >= 24 && !reminder.missedNotified) {
+      reminder.status = "missed";
+      workout.status = "missed";
+      workoutsTable.set(workout.id, workout);
+
+      const notif: NotificationRecord = {
+        id: nextId("notif"),
+        email: reminder.email,
+        workoutId: workout.id,
+        type: "missed",
+        title: "Séance manquée",
+        message: `${workout.title} n'a pas été faite. Tu veux la reprogrammer ?`,
+        createdAt: now.toISOString(),
+        read: false,
+        resolved: false
+      };
+      notificationsTable.set(notif.id, notif);
+      sendReminderEmail(reminder.email, `Séance manquée : ${workout.title}`, buildMissedEmailHtml(workout, APP_URL));
+      reminder.missedNotified = true;
+      remindersTable.set(reminder.id, reminder);
+    }
+  });
+
+  // 3) Plusieurs séances manquées d'affilée -> notification de reprise (une seule fois)
+  const emailsSeen = new Set<string>();
+  remindersTable.forEach((r) => emailsSeen.add(r.email));
+  emailsSeen.forEach((email) => {
+    const userReminders = getUserReminders(email).sort(
+      (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+    );
+    let consecutiveMissed = 0;
+    for (let i = userReminders.length - 1; i >= 0; i--) {
+      if (userReminders[i].status === "missed") consecutiveMissed++;
+      else if (userReminders[i].status === "done") break;
+    }
+    const alreadyHasRecovery = [...notificationsTable.values()].some(
+      (n) => n.email === email && n.type === "recovery"
+    );
+    if (consecutiveMissed >= 2 && !alreadyHasRecovery) {
+      const notif: NotificationRecord = {
+        id: nextId("notif"),
+        email,
+        workoutId: null,
+        type: "recovery",
+        title: "On reprend ensemble ?",
+        message: `Tu as manqué ${consecutiveMissed} séances d'affilée. Reprends dès que tu es prêt, chaque séance compte.`,
+        createdAt: now.toISOString(),
+        read: false,
+        resolved: false
+      };
+      notificationsTable.set(notif.id, notif);
+      sendReminderEmail(email, "On reprend ensemble ? 💪", buildRecoveryEmailHtml(consecutiveMissed, APP_URL));
+    }
+  });
+
+  // 4) Résumé hebdomadaire — chaque lundi à 8h
+  if (now.getDay() === 1 && now.getHours() === 8 && now.getMinutes() === 0) {
+    emailsSeen.forEach((email) => {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const recentWorkouts = getUserWorkouts(email).filter((w) => new Date(w.scheduledAt) >= weekAgo);
+      const done = recentWorkouts.filter((w) => w.status === "done").length;
+      const missed = recentWorkouts.filter((w) => w.status === "missed").length;
+      if (done + missed === 0) return;
+
+      const notif: NotificationRecord = {
+        id: nextId("notif"),
+        email,
+        workoutId: null,
+        type: "weekly_summary",
+        title: "Ton résumé de la semaine",
+        message: `${done} séance(s) réalisée(s), ${missed} manquée(s) cette semaine.`,
+        createdAt: now.toISOString(),
+        read: false,
+        resolved: true
+      };
+      notificationsTable.set(notif.id, notif);
+      sendReminderEmail(email, "📊 Ton résumé de la semaine FysiqForge", buildWeeklySummaryEmailHtml(done, missed, APP_URL));
+    });
+  }
+}
+
+setInterval(runReminderCron, 60 * 1000);
 
 async function startServer() {
   await loadFreeExerciseDatabase();
