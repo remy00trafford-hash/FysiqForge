@@ -15,6 +15,8 @@ import { Language } from "./utils/translator";
 import { generateTrainingPlan, generateTrainingPlanAsync } from "./data/mockPlanGenerator";
 import { Bot, X } from "lucide-react";
 
+const PLAN_SESSION_VERSION = 2;
+
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>("LANDING");
   const [selectedCurrency, setSelectedCurrency] = useState<"FCFA" | "USD" | "EUR">("FCFA");
@@ -44,22 +46,35 @@ export default function App() {
   const [generationFailed, setGenerationFailed] = useState(false);
   const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<UserAnswers | null>(null);
 
-  // Restauration automatique de session — si l'utilisateur a déjà payé et qu'il revient
-  // sur l'app (fermeture/réouverture du navigateur), on le renvoie DIRECTEMENT à son plan
-  // débloqué, sans jamais lui remontrer le paywall qu'il a déjà passé.
+  // Restauration automatique de session : on ne restaure qu'un plan provenant du schéma
+  // actuel ET contenant réellement au moins 20 exercices sur le premier jour.
+  // Cela évite de réutiliser un ancien plan de développement (ex. 4 exercices/jour)
+  // alors que la nouvelle règle produit 20 exercices/jour.
   useEffect(() => {
     try {
       const saved = localStorage.getItem("fysiqforge_unlocked_session");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.plan && parsed?.email) {
+        const firstWeek = Array.isArray(parsed?.plan?.weeklySchedules)
+          ? parsed.plan.weeklySchedules[0]
+          : parsed?.plan?.weekSchedule;
+        const firstDay = Array.isArray(firstWeek) ? firstWeek[0] : null;
+        const exerciseCount = Array.isArray(firstDay?.exercises) ? firstDay.exercises.length : 0;
+        const isCurrentSchema = parsed?.sessionVersion === PLAN_SESSION_VERSION;
+
+        if (isCurrentSchema && parsed?.plan && parsed?.email && exerciseCount >= 20) {
           setGeneratedPlan(parsed.plan);
           setUserEmail(parsed.email);
           setIsUnlocked(true);
           setCurrentStep("FULL_PLAN");
+        } else {
+          // Ancienne session (par ex. 4 exercices/jour) : on la retire pour forcer une
+          // nouvelle génération conforme à la règle actuelle.
+          localStorage.removeItem("fysiqforge_unlocked_session");
         }
       }
     } catch (e) {
+      localStorage.removeItem("fysiqforge_unlocked_session");
       console.warn("Impossible de restaurer la session précédente:", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -124,8 +139,6 @@ export default function App() {
           analysisData = data.analysis;
         }
       } catch (err) {
-        // On continue avec l'analyse par défaut plutôt que de bloquer l'utilisateur —
-        // l'analyse photo est un bonus, pas une étape qui doit pouvoir tout faire planter.
         console.warn("Analyse photo indisponible, on continue avec les valeurs par défaut:", err);
       }
     }
@@ -166,12 +179,15 @@ export default function App() {
       };
       setGeneratedPlan(unlockedPlan);
 
-      // On sauvegarde l'accès pour que l'utilisateur ne retombe JAMAIS sur le paywall
-      // s'il ferme l'app et revient plus tard, alors qu'il a déjà payé.
       try {
         localStorage.setItem(
           "fysiqforge_unlocked_session",
-          JSON.stringify({ email, plan: unlockedPlan, unlockedAt: Date.now() })
+          JSON.stringify({
+            sessionVersion: PLAN_SESSION_VERSION,
+            email,
+            plan: unlockedPlan,
+            unlockedAt: Date.now()
+          })
         );
       } catch (e) {
         console.warn("Impossible de sauvegarder la session localement:", e);
@@ -183,7 +199,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0D0D11] text-white font-sans antialiased selection:bg-[#FF5500] selection:text-white relative">
-      {/* Universal Header */}
       <Header
         currentStep={currentStep}
         onNavigateStep={setCurrentStep}
@@ -198,14 +213,8 @@ export default function App() {
         isUnlocked={isUnlocked}
       />
 
-      {/* Main Content Router */}
       <main>
-        {currentStep === "LANDING" && (
-          <LandingHero
-            onStartClick={handleStartFlow}
-            language={language}
-          />
-        )}
+        {currentStep === "LANDING" && <LandingHero onStartClick={handleStartFlow} language={language} />}
 
         {currentStep === "PHOTO" && (
           <PhotoUploadStep
@@ -229,11 +238,7 @@ export default function App() {
         )}
 
         {currentStep === "AHA_PREVIEW" && generatedPlan && (
-          <AhaPreviewStep
-            plan={generatedPlan}
-            onUnlockClick={handleOpenPaywall}
-            language={language}
-          />
+          <AhaPreviewStep plan={generatedPlan} onUnlockClick={handleOpenPaywall} language={language} />
         )}
 
         {currentStep === "PAYWALL" && (
@@ -253,7 +258,6 @@ export default function App() {
         )}
       </main>
 
-      {/* PERSISTENT FLOATING ACTION BUTTON (FAB) FOR COACH IA CHAT */}
       <button
         onClick={() => setShowCoachChatModal(true)}
         className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl shadow-[#FF5500]/40 flex items-center gap-2.5 cursor-pointer transition-all border border-white/20 group"
@@ -268,7 +272,6 @@ export default function App() {
         </span>
       </button>
 
-      {/* GLOBAL PERSISTENT COACH IA CHAT DRAWER / MODAL */}
       {showCoachChatModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="max-w-2xl w-full relative animate-in fade-in zoom-in-95 my-auto">
@@ -286,15 +289,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Admin Dashboard Overlay Modal */}
-      {showAdminModal && (
-        <AdminDashboard onClose={() => setShowAdminModal(false)} />
-      )}
+      {showAdminModal && <AdminDashboard onClose={() => setShowAdminModal(false)} />}
 
-      {/* FAQ & Support — accessible depuis N'IMPORTE QUEL écran de l'app, pas seulement après paiement */}
-      {showFaqModal && (
-        <FaqAndSupportModal onClose={() => setShowFaqModal(false)} />
-      )}
+      {showFaqModal && <FaqAndSupportModal onClose={() => setShowFaqModal(false)} />}
     </div>
   );
 }
