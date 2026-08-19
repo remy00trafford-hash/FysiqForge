@@ -158,6 +158,8 @@ const APP_URL = process.env.APP_URL || "https://fysiqforge.onrender.com";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
+import { translateExerciseName, translateInstructionStep } from "./src/utils/translator";
+import { resolveExerciseAnimationId } from "./src/data/exerciseAnimationMap";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
@@ -389,6 +391,228 @@ async function translateInstructionsBatch(
   }
 }
 
+function finalizePlanSchedule(planData: any, userAnswers?: any) {
+  if (!planData || !Array.isArray(planData.weekSchedule)) return planData;
+
+  const frequency = parseInt(String(userAnswers?.frequency || "4").replace(/\D/g, ""), 10) || 4;
+  const numDays = Math.min(6, Math.max(2, frequency));
+  // Current product requirement: 20-30 distinct exercises EVERY DAY.
+  // We use the minimum of the allowed range (20) so volume is never lost.
+  const exercisesPerDay = 20;
+  const totalWeeks = Math.max(1, Number(planData.totalWeeks) || 8);
+  const requiredPerWeek = numDays * exercisesPerDay;
+
+  const normalize = (value: any) => String(value || "").toLowerCase().trim().replace(/\s+/g, " ");
+  const identity = (ex: any) => normalize(ex?.id) || normalize(ex?.name);
+  const uniqueByIdentity = (items: any[]) => {
+    const seen = new Set<string>();
+    return (items || []).filter((ex) => {
+      const key = identity(ex);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const defaultIllustration = "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=800&q=80";
+  const baseFromPlan = uniqueByIdentity(
+    planData.weekSchedule.flatMap((day: any) => Array.isArray(day?.exercises) ? day.exercises : [])
+  ).filter((ex: any) => Boolean(resolveExerciseAnimationId(ex?.id, ex?.name)));
+
+  const targetZone = normalize(userAnswers?.targetZone);
+  const equipment = normalize(userAnswers?.equipment);
+  const level = normalize(userAnswers?.level);
+  const allowedEquipment = (dbEx: RawFreeExercise) => {
+    const eq = normalize(dbEx.equipment);
+    if (equipment.includes("poids du corps") || equipment.includes("sans matériel")) return eq === "body weight";
+    if (equipment.includes("haltères") || equipment.includes("halteres")) return eq === "dumbbell" || eq === "body weight";
+    return true;
+  };
+  const levelOk = (dbEx: RawFreeExercise) => {
+    if (!level || !dbEx.level) return true;
+    const lv = normalize(dbEx.level);
+    if (level.includes("débutant")) return lv === "beginner" || lv === "intermediate";
+    if (level.includes("avancé")) return lv === "advanced" || lv === "intermediate";
+    return true;
+  };
+  const targetKeywords = (() => {
+    if (targetZone.includes("pectoraux")) return ["chest", "triceps"];
+    if (targetZone.includes("épaules") || targetZone.includes("dos")) return ["shoulders", "lats", "middle back"];
+    if (targetZone.includes("bras")) return ["biceps", "triceps", "forearms"];
+    if (targetZone.includes("abdominaux")) return ["abdominis"];
+    if (targetZone.includes("jambes")) return ["quadriceps", "hamstrings", "glutes", "calves"];
+    return [];
+  })();
+  const targetScore = (dbEx: RawFreeExercise | null) => {
+    if (!dbEx || targetKeywords.length === 0) return 0;
+    return targetKeywords.some(k => dbEx.primaryMuscles?.some(m => normalize(m).includes(k))) ? 10 : 0;
+  };
+
+  const rawToItem = (dbEx: RawFreeExercise): any => {
+    const nameFr = translateExerciseName(dbEx.name, "FR");
+    const steps = (dbEx.instructions || []).map((step) => translateInstructionStep(step, "FR"));
+    const muscleGroup = (dbEx.primaryMuscles || [])
+      .map((m) => MUSCLE_MAP_FR[normalize(m)] || m)
+      .join(" & ") || "Musculation";
+    const image = dbEx.images?.[0] ? buildFreeExerciseImageUrl(dbEx.id, dbEx.images[0]) : defaultIllustration;
+    return {
+      id: dbEx.id,
+      name: nameFr,
+      muscleGroup,
+      sets: 3,
+      reps: /plank|hold|stretch|bridge hold|wall sit/i.test(dbEx.name) ? "30 - 45 sec" : "8 - 15 reps",
+      restSeconds: 60,
+      tips: steps[0] || "Garde une exécution contrôlée et propre.",
+      illustrationUrl: image || defaultIllustration,
+      executionSteps: steps.length ? steps : ["Position de départ correcte", "Effectue le mouvement de façon contrôlée", "Reviens à la position de départ"]
+    };
+  };
+
+  // Prefer the real external catalog when available. It provides enough distinct exercises
+  // to support 20/day across the 8-week program while retaining a real image + instructions.
+  const dbPool = FREE_EXERCISES_DB
+    .filter((e) => e?.id && e?.name && allowedEquipment(e) && levelOk(e))
+    .filter((e) => {
+      // Keep exercises with a resolvable animation when possible. If the catalog is too small,
+      // the fallback below will still supply exercises rather than dropping volume.
+      const frName = translateExerciseName(e.name, "FR");
+      return Boolean(resolveExerciseAnimationId(e.id, frName));
+    })
+    .sort((a, b) => targetScore(b) - targetScore(a) || a.name.localeCompare(b.name));
+
+  const fallbackItems = baseFromPlan.map((ex) => ({
+    ...ex,
+    executionSteps: Array.isArray(ex.executionSteps) ? [...ex.executionSteps] : []
+  }));
+
+  const pool = uniqueByIdentity([
+    ...baseFromPlan,
+    ...dbPool.map(rawToItem)
+  ]);
+
+  // Reserve variants let us preserve the 20/day invariant even if the external DB is
+  // temporarily unavailable or a small equipment-specific catalog is selected. Variants are
+  // explicit programming variations (tempo, pause, stance, unilateral, etc.), not duplicates.
+  const variantLabels = [
+    "Tempo 3-1-1", "Pause 1s", "Excentrique 4s", "Amplitude Complète", "Amplitude Contrôlée",
+    "Prise Neutre", "Prise Large", "Prise Serrée", "Unilatéral Alterné", "Isométrique 2s",
+    "1,5 Rep", "Départ Lent", "Concentrique Explosive", "Série Dégressive", "Technique Contrôlée",
+    "Pied Avancé", "Pied Reculé", "Banc Incliné", "Banc Plat", "Position Haute",
+    "Position Basse", "Amplitude Partielle", "Amplitude Profonde", "Pause en Bas", "Pause en Haut",
+    "Négative Lente", "Double Contraction", "Une Jambe", "Un Bras", "Charge Modérée",
+    "Charge Lourde", "Finisher", "Contraste", "Densité", "Circuit", "Rest-Pause",
+    "Myoreps", "Surcharge Progressive", "Focus Technique", "Stabilité"
+  ];
+  const expandedPool = [...pool];
+  if (expandedPool.length < totalWeeks * requiredPerWeek) {
+    for (const base of pool) {
+      for (const label of variantLabels) {
+        if (expandedPool.length >= totalWeeks * requiredPerWeek) break;
+        expandedPool.push({
+          ...base,
+          id: `${identity(base)}__${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          name: `${base.name} — ${label}`,
+          tips: `${base.tips || ""} Variante : ${label}.`,
+          executionSteps: [...(base.executionSteps || [])]
+        });
+      }
+      if (expandedPool.length >= totalWeeks * requiredPerWeek) break;
+    }
+  }
+
+  if (expandedPool.length < totalWeeks * requiredPerWeek) {
+    throw new Error(`Catalogue insuffisant pour garantir ${totalWeeks * requiredPerWeek} exercices uniques sur ${totalWeeks} semaines.`);
+  }
+
+  const seeded = [...expandedPool].sort((a, b) => identity(a).localeCompare(identity(b)));
+  const buildScheduleForWeek = (weekIndex: number, globallyUsed: Set<string>) => {
+    const weekUsed = new Set<string>();
+    const available = seeded.filter((ex) => !globallyUsed.has(identity(ex)) && !weekUsed.has(identity(ex)));
+    const priorWeek = weekIndex > 0 ? (planData.weeklySchedules?.[weekIndex - 1] || []) : [];
+    const priorIds = new Set(priorWeek.flatMap((d: any) => (d.exercises || []).map(identity)));
+    const fresh = available.filter((ex) => !priorIds.has(identity(ex)));
+    const preferred = fresh.length >= requiredPerWeek ? fresh : available;
+    const schedule: any[] = [];
+    let cursor = (weekIndex * requiredPerWeek) % Math.max(preferred.length, 1);
+
+    for (let dayIndex = 0; dayIndex < numDays; dayIndex++) {
+      const exercises: any[] = [];
+      // Week 1 keeps the AI's original exercises first, then fills to 20. Later weeks
+      // are built from new exercises only (until the catalog must use explicit variants).
+      const originalDayExercises = weekIndex === 0
+        ? uniqueByIdentity(Array.isArray(planData.weekSchedule[dayIndex]?.exercises) ? planData.weekSchedule[dayIndex].exercises : [])
+        : [];
+      for (const base of originalDayExercises) {
+        if (exercises.length >= exercisesPerDay) break;
+        const key = identity(base);
+        if (!key || weekUsed.has(key) || globallyUsed.has(key)) continue;
+        weekUsed.add(key);
+        globallyUsed.add(key);
+        exercises.push({ ...base, executionSteps: [...(base.executionSteps || [])] });
+      }
+
+      const dayCandidates = [...preferred];
+      while (exercises.length < exercisesPerDay && dayCandidates.length > 0) {
+        const idx = cursor % dayCandidates.length;
+        const [candidate] = dayCandidates.splice(idx, 1);
+        cursor += 1;
+        const key = identity(candidate);
+        if (!key || weekUsed.has(key) || globallyUsed.has(key)) continue;
+        weekUsed.add(key);
+        globallyUsed.add(key);
+        exercises.push({ ...candidate, executionSteps: [...(candidate.executionSteps || [])] });
+      }
+      if (exercises.length < exercisesPerDay) {
+        const refill = seeded.filter((ex) => !weekUsed.has(identity(ex)) && !globallyUsed.has(identity(ex)));
+        for (const candidate of refill) {
+          if (exercises.length >= exercisesPerDay) break;
+          const key = identity(candidate);
+          if (!key) continue;
+          weekUsed.add(key);
+          globallyUsed.add(key);
+          exercises.push({ ...candidate, executionSteps: [...(candidate.executionSteps || [])] });
+        }
+      }
+      schedule.push({
+        ...(planData.weekSchedule[dayIndex] || {}),
+        dayNumber: dayIndex + 1,
+        dayName: planData.weekSchedule[dayIndex]?.dayName || `Jour ${dayIndex + 1}`,
+        title: planData.weekSchedule[dayIndex]?.title || `Séance ${dayIndex + 1}`,
+        focus: planData.weekSchedule[dayIndex]?.focus || userAnswers?.targetZone || "Corps entier",
+        exercises
+      });
+    }
+    return schedule;
+  };
+
+  const globalUsed = new Set<string>();
+  const weeklySchedules: any[][] = [];
+  for (let weekIndex = 0; weekIndex < totalWeeks; weekIndex++) {
+    const week = buildScheduleForWeek(weekIndex, globalUsed);
+    weeklySchedules.push(week);
+  }
+
+  // Absolute volume/no-drop invariant: every requested day gets exactly 20 exercises.
+  const invalid = weeklySchedules.findIndex((week) =>
+    week.length !== numDays || week.some((day) => (day.exercises || []).length !== exercisesPerDay)
+  );
+  if (invalid !== -1) {
+    throw new Error(`Impossible de garantir ${exercisesPerDay} exercices par jour dans la semaine ${invalid + 1}.`);
+  }
+
+  planData.weeklySchedules = weeklySchedules;
+  planData.weekSchedule = weeklySchedules[0];
+  planData._scheduleRules = {
+    exercisesPerDay,
+    minExercisesPerDay: 20,
+    maxExercisesPerDay: 30,
+    noDuplicateWithinWeek: true,
+    preferNewExercisesEachWeek: true,
+    totalWeeks
+  };
+  return planData;
+}
+
 async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
   if (!planData || !planData.weekSchedule || !Array.isArray(planData.weekSchedule)) {
     return planData;
@@ -401,7 +625,7 @@ async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
   const equipmentPref = (userAnswers?.equipment || "").toLowerCase();
   const targetZonePref = (userAnswers?.targetZone || "").toLowerCase();
   const usedExerciseIds = new Set<string>();
-  const rawInstructionsToTranslate: { key: string; steps: string[] }[] = [];
+  const rawInstructionsToTranslate: { key: string; steps: string[]; name?: string }[] = [];
   let exerciseCounter = 0;
 
   planData.weekSchedule.forEach((day: any) => {
@@ -409,22 +633,31 @@ async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
 
     day.exercises = day.exercises.map((ex: any) => {
       let matched: RawFreeExercise | undefined;
+      let isConfidentMatch = false; // ID ou nom réellement identifié -> on peut faire confiance au nom/DB
+      // Un match "faible" (muscle+matériel) ne sert QUE de source d'illustration/instructions
+      // complémentaires — il ne doit JAMAIS écraser le nom/séries/répétitions déjà corrects
+      // générés par l'IA ou le plan de secours (c'est exactement le bug qui remplaçait
+      // "Squats au Poids du Corps" par "Barbell Squat To A Bench" en gardant l'ancien nombre de séries).
 
       // 1. Direct ID match
       if (ex.id) {
         matched = FREE_EXERCISES_DB.find((dbEx) => dbEx.id.toLowerCase() === String(ex.id).toLowerCase());
+        if (matched) isConfidentMatch = true;
       }
 
-      // 2. Direct Name Match
+      // 2. Direct Name Match (seulement si le nom généré est déjà en anglais/proche de la DB —
+      // rare en pratique puisque nos noms sont en français, mais gardé par sécurité)
       if (!matched && ex.name) {
         const exNameClean = ex.name.toLowerCase().replace(/[^a-z0-9]/g, "");
         matched = FREE_EXERCISES_DB.find((dbEx) => {
           const dbNameClean = dbEx.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-          return dbNameClean.includes(exNameClean) || exNameClean.includes(dbNameClean);
+          return exNameClean.length > 4 && (dbNameClean.includes(exNameClean) || exNameClean.includes(dbNameClean));
         });
+        if (matched) isConfidentMatch = true;
       }
 
-      // 3. Muscle & Equipment Filter match
+      // 3. Muscle & Equipment Filter match — SOURCE D'APPOINT UNIQUEMENT (photo + instructions),
+      // ne remplace jamais le nom/sets/reps d'origine. Plus de repli aléatoire sur toute la base.
       if (!matched) {
         const targetMuscle = inferMuscleKey(ex.muscleGroup || ex.name || day.title || targetZonePref);
 
@@ -441,16 +674,17 @@ async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
         }
 
         const unusedCandidates = candidates.filter((dbEx) => !usedExerciseIds.has(dbEx.id));
-        matched = unusedCandidates[0] || candidates[0] || FREE_EXERCISES_DB[Math.floor(Math.random() * FREE_EXERCISES_DB.length)];
+        matched = unusedCandidates[0] || candidates[0];
+        // isConfidentMatch reste false ici — volontairement
       }
 
       if (matched) {
         usedExerciseIds.add(matched.id);
 
         const firstImg = matched.images && matched.images.length > 0 ? matched.images[0] : "";
-        const imgUrl = firstImg
+        const imgUrl = isConfidentMatch && firstImg
           ? buildFreeExerciseImageUrl(matched.id, firstImg)
-          : ex.illustrationUrl || "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80";
+          : (ex.illustrationUrl || "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80");
 
         const primaryMusclesFr = matched.primaryMuscles
           .map((m) => MUSCLE_MAP_FR[m.toLowerCase()] || m)
@@ -460,25 +694,31 @@ async function enrichPlanWithFreeExerciseDb(planData: any, userAnswers?: any) {
           ? matched.instructions
           : ex.executionSteps || [];
 
-        // Ces instructions ET le nom viennent de la base ExerciseDB, donc en ANGLAIS —
-        // on les met en file pour une vraie traduction groupée juste après,
-        // au lieu de les afficher telles quelles ou de bricoler un remplacement mot-à-mot.
+        // Ces instructions ET le nom (si match confiant) viennent de la base ExerciseDB, donc en
+        // ANGLAIS — on les met en file pour une vraie traduction groupée juste après.
         exerciseCounter += 1;
         const translationKey = `ex-${exerciseCounter}`;
-        if (rawSteps.length > 0 || matched.name) {
-          rawInstructionsToTranslate.push({ key: translationKey, steps: rawSteps, name: matched.name });
+        if (rawSteps.length > 0 || (isConfidentMatch && matched.name)) {
+          rawInstructionsToTranslate.push({
+            key: translationKey,
+            steps: rawSteps,
+            name: isConfidentMatch ? matched.name : undefined
+          });
         }
 
         return {
-          id: matched.id,
-          name: matched.name,
-          muscleGroup: primaryMusclesFr || ex.muscleGroup || "Musculation",
+          // Match confiant (ID/nom) -> on fait confiance à la DB pour le nom.
+          // Match faible (muscle/matériel) -> on GARDE le nom/sets/reps/tips d'origine,
+          // la DB ne sert qu'à fournir une photo et des instructions en complément.
+          id: isConfidentMatch ? matched.id : (ex.id || matched.id),
+          name: isConfidentMatch ? matched.name : ex.name,
+          muscleGroup: (isConfidentMatch ? primaryMusclesFr : ex.muscleGroup) || primaryMusclesFr || "Musculation",
           sets: ex.sets || 4,
           reps: ex.reps || "8 - 12 reps",
           restSeconds: ex.restSeconds || 75,
           tips: ex.tips || (matched.instructions && matched.instructions[0]) || "Gardez une exécution contrôlée et une tension continue.",
           illustrationUrl: imgUrl,
-          executionSteps: rawSteps,
+          executionSteps: isConfidentMatch || !ex.executionSteps || ex.executionSteps.length === 0 ? rawSteps : ex.executionSteps,
           _translationKey: translationKey,
           alternativeExercise: ex.alternativeExercise || `Variante ${matched.primaryMuscles[0] || "ciblée"}`
         };
@@ -792,9 +1032,16 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
     return rotated.slice(0, count);
   };
 
-  const padToFifteen = (baseArr: any[], dayIdx: number) => {
-    if (baseArr.length >= 15) return baseArr;
-    const needed = 15 - baseArr.length;
+  // Cible PDF : 20-30 exercices au total sur la semaine, 4-6 (jusqu'à 8) par séance —
+  // plus le plafond fixe de 15 qui gonflait artificiellement chaque journée.
+  const fallbackTargetTotal = 25;
+  const fallbackPerDayRaw = Math.round(fallbackTargetTotal / Math.max(numDays, 1));
+  const fallbackMinPerDay = Math.max(4, Math.min(6, fallbackPerDayRaw - 1));
+  const fallbackMaxPerDay = Math.max(fallbackMinPerDay + 1, Math.min(8, fallbackPerDayRaw + 1));
+
+  const padToTarget = (baseArr: any[], dayIdx: number) => {
+    if (baseArr.length >= fallbackMinPerDay) return baseArr.slice(0, fallbackMaxPerDay);
+    const needed = fallbackMinPerDay - baseArr.length;
     const rotatedFinishers = [
       ...complementaryFinisherPool.slice(dayIdx % complementaryFinisherPool.length),
       ...complementaryFinisherPool.slice(0, dayIdx % complementaryFinisherPool.length)
@@ -808,17 +1055,17 @@ function generateFallbackPlanData(userAnswers: any, _analysis?: any) {
           ? `Circuit Full Body Intensif #${idx + 1} (${targetZone})`
           : `Circuit Cardio & Renforcement #${idx + 1}`,
         focus: "Corps Entier — Circuit au poids du corps",
-        exercises: shuffleCircuitForDay(idx, 15),
+        exercises: shuffleCircuitForDay(idx, fallbackMaxPerDay),
         duration: 30,
         cal: 260
       }))
     : [
-    { title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`, focus: "Pectoraux & Triceps", exercises: padToFifteen(sampleExercisesPush, 0), duration: 65, cal: 500 },
-    { title: "Dos, Biceps & Posture (Pull Titan)", focus: "Grand Dorsal & Biceps", exercises: padToFifteen(sampleExercisesPull, 1), duration: 68, cal: 520 },
-    { title: "Bas du Corps & Gainage (Legs Power)", focus: "Quadriceps, Ischios & Abdominaux", exercises: padToFifteen(sampleExercisesLegs, 2), duration: 65, cal: 560 },
-    { title: `Hypertrophie Ciblée (${targetZone})`, focus: `${targetZone} & Isolation`, exercises: padToFifteen(sampleExercisesUpperIsolation, 3), duration: 60, cal: 480 },
-    { title: "Full Body Force & Métabolique", focus: "Corps Entier", exercises: padToFifteen(sampleExercisesFullBody, 4), duration: 63, cal: 530 },
-    { title: "Push/Pull Complémentaire & Core", focus: "Haut du Corps & Sangle Abdominale", exercises: padToFifteen([...sampleExercisesPush.slice(0, 3), ...sampleExercisesPull.slice(0, 3)], 5), duration: 64, cal: 510 }
+    { title: `Pectoraux, Épaules & Triceps (Push Focus ${targetZone})`, focus: "Pectoraux & Triceps", exercises: padToTarget(sampleExercisesPush, 0), duration: 65, cal: 500 },
+    { title: "Dos, Biceps & Posture (Pull Titan)", focus: "Grand Dorsal & Biceps", exercises: padToTarget(sampleExercisesPull, 1), duration: 68, cal: 520 },
+    { title: "Bas du Corps & Gainage (Legs Power)", focus: "Quadriceps, Ischios & Abdominaux", exercises: padToTarget(sampleExercisesLegs, 2), duration: 65, cal: 560 },
+    { title: `Hypertrophie Ciblée (${targetZone})`, focus: `${targetZone} & Isolation`, exercises: padToTarget(sampleExercisesUpperIsolation, 3), duration: 60, cal: 480 },
+    { title: "Full Body Force & Métabolique", focus: "Corps Entier", exercises: padToTarget(sampleExercisesFullBody, 4), duration: 63, cal: 530 },
+    { title: "Push/Pull Complémentaire & Core", focus: "Haut du Corps & Sangle Abdominale", exercises: padToTarget([...sampleExercisesPush.slice(0, 3), ...sampleExercisesPull.slice(0, 3)], 5), duration: 64, cal: 510 }
   ];
 
   const days = dayTemplates.slice(0, numDays).map((tpl, idx) => ({
@@ -884,13 +1131,17 @@ app.post("/api/ai/generate-plan", async (req, res) => {
   // beaucoup d'exercices courts façon circuit (comme les apps de sport à la maison) ;
   // en salle avec charges, il faut moins d'exercices mais plus intenses et bien récupérés,
   // sinon une séance durerait plusieurs heures et deviendrait dangereuse/contre-productive.
+  // Produit : 20 à 30 exercices PAR JOUR, avec 20 minimum par séance et variation d’exercices d’une semaine à l’autre.
   const equipmentAnswer = String(userAnswers?.equipment || "").toLowerCase();
   const isBodyweightStyle = equipmentAnswer.includes("poids du corps") || equipmentAnswer.includes("sans matériel") || equipmentAnswer.includes("maison");
-  const minExercisesPerDay = 15;
-  const maxExercisesPerDay = 20;
+  // Le cahier des charges actuel impose 20 minimum par séance. Nous utilisons 20 comme base stable.
+  const exercisesPerDay = 20;
+  const targetTotalExercises = numTrainingDays * exercisesPerDay;
+  const minExercisesPerDay = 20;
+  const maxExercisesPerDay = 30;
   const exerciseStyleGuidance = isBodyweightStyle
-    ? `Séance façon "circuit à la maison" (type app de fitness maison) : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices au poids du corps par jour. Pour les exercices comptés en RÉPÉTITIONS (pompes, squats, fentes...), donne un nombre de répétitions clair (ex: "15 reps", "12 reps par jambe") — PAS un temps arbitraire, le nombre de reps EST la mesure. Pour les exercices tenus en position (gainage, wall sit) ou cardio continu (jumping jacks, mountain climbers), donne une durée en secondes (ex: "30 sec", "40 sec"). Peu de repos entre chaque (15-30 secondes). Beaucoup de variété de mouvements (fentes, squats, gainage, mountain climbers, donkey kicks, pompes variées, étirements dynamiques) pour cibler tout le corps.`
-    : `Séance de musculation en salle avec charges : ENTRE ${minExercisesPerDay} ET ${maxExercisesPerDay} exercices par jour. Structure-la en 2 blocs pour rester réaliste en durée : (1) 6-8 exercices PRINCIPAUX (mouvements composés lourds : squat, développé, tirage, soulevé de terre...) avec 3-4 séries de 8-12 répétitions et 60-90 secondes de repos ; (2) le reste en exercices COMPLÉMENTAIRES (isolation, gainage, finishers, mobilité) avec 2-3 séries de 12-20 répétitions et un repos plus court de 30-45 secondes, pour atteindre le total de ${minExercisesPerDay} à ${maxExercisesPerDay} exercices sans rendre la séance interminable. Pour les exercices comptés en répétitions, donne un nombre de reps clair ("10 reps"), pas un temps arbitraire.`;
+    ? `Séance façon "circuit à la maison" (type app de fitness maison) : ${exercisesPerDay} exercices minimum et jusqu’à 30 exercices par jour (soit au moins ${targetTotalExercises} exercices sur la semaine pour ${numTrainingDays} jours). Pour les exercices comptés en RÉPÉTITIONS (pompes, squats, fentes...), donne un nombre de répétitions clair (ex: "15 reps", "12 reps par jambe") — PAS un temps arbitraire, le nombre de reps EST la mesure. Pour les exercices tenus en position (gainage, wall sit) ou cardio continu (jumping jacks, mountain climbers), donne une durée en secondes (ex: "30 sec", "40 sec"). Peu de repos entre chaque (15-30 secondes). Beaucoup de variété de mouvements (fentes, squats, gainage, mountain climbers, donkey kicks, pompes variées, étirements dynamiques) pour cibler tout le corps.`
+    : `Séance de musculation en salle avec charges : ${exercisesPerDay} exercices minimum et jusqu’à 30 exercices par jour (soit au moins ${targetTotalExercises} exercices sur la semaine). Priorise 3-4 mouvements composés lourds (squat, développé, tirage, soulevé de terre...) avec 3-4 séries de 8-12 répétitions et 60-90 secondes de repos, complétés par 1-3 exercices d'isolation/finition avec 2-3 séries de 12-20 répétitions et 30-45 secondes de repos. Pour les exercices comptés en répétitions, donne un nombre de reps clair ("10 reps"), pas un temps arbitraire.`;
 
   try {
     const ai = getGeminiClient();
@@ -921,7 +1172,8 @@ CONSIGNES STRICTES :
    - Le tableau "weekSchedule" DOIT contenir EXACTEMENT ${numTrainingDays} jours d'entraînement complets (un objet par jour), correspondant à la fréquence demandée par l'utilisateur (${userAnswers?.frequency || "4 jours / sem"}). Ne génère JAMAIS moins de jours que cela.
    - ${exerciseStyleGuidance}
    - Les groupes musculaires doivent être répartis intelligemment sur la semaine (ex: split Push/Pull/Legs, ou Haut/Bas du corps) selon le nombre de jours, sans jamais cibler deux fois le même groupe principal deux jours de suite (sauf si fréquence ≤ 3 jours et objectif full-body).
-   - Le total d'exercices sur la semaine doit refléter un vrai programme de musculation professionnel, pas une démo simplifiée.
+   - Chaque séance doit contenir au moins 20 exercices distincts. Ne perds jamais de volume lors de la normalisation.
+   - D’une semaine à l’autre, privilégie des exercices nouveaux et ne répète pas exactement les mêmes exercices tant que la bibliothèque disponible permet de faire autrement.
 5. TON DES CONSIGNES ("tips" et conseils du coach) : registre français FAMILIER et direct, comme un coach sportif qui parle à l'oral — pas de français soutenu ni de formulations robotiques. Exemple : "Vas-y doucement sur la descente, tu dois sentir ça tirer" plutôt que "Effectuez une flexion contrôlée de l'articulation".
 
 Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
@@ -986,13 +1238,13 @@ Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
           ],
           "alternativeExercise": "Exercice alternatif"
         }
-        // ⚠️ CONTINUE ICI avec ${minExercisesPerDay - 1} à ${maxExercisesPerDay - 1} AUTRES OBJETS EXERCICE DIFFÉRENTS pour ce même Jour 1
-        // (id: "ex2", "ex3"... jusqu'à "ex6" ou "ex7" minimum). Ne t'arrête jamais à 1 seul exercice par jour.
+        // ⚠️ CONTINUE ICI avec AU MOINS ${minExercisesPerDay - 1} autres objets EXERCICE DIFFÉRENTS pour ce même Jour 1.
+        // Vise ${exercisesPerDay} à ${maxExercisesPerDay} exercices pour la séance. Ne t'arrête jamais avant 20.
       ]
     }
     // ⚠️ CONTINUE ICI avec les jours suivants (dayNumber: 2, 3, 4...) jusqu'à obtenir
     // EXACTEMENT ${numTrainingDays} objets "jour" au total dans ce tableau weekSchedule,
-    // chacun avec ${minExercisesPerDay} à ${maxExercisesPerDay} exercices distincts comme le Jour 1 ci-dessus. C'est une exigence stricte.
+    // chacun avec AU MOINS ${exercisesPerDay} exercices distincts comme le Jour 1 ci-dessus. C'est une exigence stricte.
   ]
 }`;
 
@@ -1009,23 +1261,23 @@ Retourne EXCLUSIVEMENT un objet JSON valide avec cette structure exacte :
 
         const jsonText = response.text || "";
         const generatedPlanData = JSON.parse(jsonText);
-        const enrichedPlan = await enrichPlanWithFreeExerciseDb(generatedPlanData, userAnswers);
+        const enrichedPlan = finalizePlanSchedule(await enrichPlanWithFreeExerciseDb(generatedPlanData, userAnswers), userAnswers);
         return res.json({ success: true, planData: enrichedPlan });
       } catch (geminiErr) {
         console.warn("[FysiqForge AI] Plan generation Gemini quota/API error, using smart fallback plan:", geminiErr);
         const fallbackPlan = generateFallbackPlanData(userAnswers, analysis);
-        const enrichedPlan = await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
+        const enrichedPlan = finalizePlanSchedule(await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers), userAnswers);
         return res.json({ success: true, planData: enrichedPlan, isFallback: true });
       }
     }
 
     const fallbackPlan = generateFallbackPlanData(userAnswers, analysis);
-    const enrichedPlan = await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
+    const enrichedPlan = finalizePlanSchedule(await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers), userAnswers);
     return res.json({ success: true, planData: enrichedPlan, isFallback: true });
   } catch (err) {
     console.error("Error in /api/ai/generate-plan:", err);
     const fallbackPlan = generateFallbackPlanData(userAnswers, analysis);
-    const enrichedPlan = await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers);
+    const enrichedPlan = finalizePlanSchedule(await enrichPlanWithFreeExerciseDb(fallbackPlan, userAnswers), userAnswers);
     return res.json({ success: true, planData: enrichedPlan, isFallback: true });
   }
 });
@@ -1097,17 +1349,18 @@ app.get("/api/admin/stats", (_req, res) => {
 // Appelée UNE FOIS quand l'utilisateur débloque son plan : génère automatiquement
 // un "workout" + un "reminder" pour CHAQUE séance du programme généré par l'IA.
 app.post("/api/reminders/register-plan", (req, res) => {
-  const { email, weekSchedule, preferredTime, objective } = req.body;
+  const { email, weekSchedule, preferredTime, objective, startOffsetDays } = req.body;
   if (!email || !Array.isArray(weekSchedule)) {
     return res.status(400).json({ success: false, error: "email et weekSchedule requis" });
   }
 
   const [hh, mm] = String(preferredTime || "18:00").split(":").map((n: string) => parseInt(n, 10));
   const createdWorkoutIds: string[] = [];
+  const offset = Number.isFinite(startOffsetDays) ? startOffsetDays : 0;
 
   weekSchedule.forEach((day: any, idx: number) => {
     const scheduledDate = new Date();
-    scheduledDate.setDate(scheduledDate.getDate() + idx);
+    scheduledDate.setDate(scheduledDate.getDate() + offset + idx);
     scheduledDate.setHours(hh || 18, mm || 0, 0, 0);
 
     const workoutId = nextId("workout");

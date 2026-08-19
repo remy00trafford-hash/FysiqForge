@@ -619,6 +619,9 @@ export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({
               <ExercisePoseIllustration
                 key={`pose-${currentExIdx}`}
                 pose={classifyExercisePose(currentExercise?.name || "", currentExercise?.muscleGroup)}
+                exerciseId={currentExercise?.id}
+                exerciseName={currentExercise?.name}
+                muscleGroup={currentExercise?.muscleGroup}
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />

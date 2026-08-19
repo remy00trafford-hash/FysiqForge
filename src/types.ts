@@ -112,6 +112,8 @@ export interface TrainingPlan {
   totalWeeks?: number;
   weeksProgression?: WeekProgressionInfo[];
   weekSchedule: WorkoutDay[];
+  /** Full 8-week schedule. weekSchedule remains week 1 for backward compatibility. */
+  weeklySchedules?: WorkoutDay[][];
   playlist: MusicPlaylist;
   createdAt: string;
   unlockedAt?: string;

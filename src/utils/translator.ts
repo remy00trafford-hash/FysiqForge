@@ -161,7 +161,7 @@ const EXERCISE_NAME_MAP: Record<string, string> = {
 
 // Common sentence instruction translation replacements
 const INSTRUCTION_PATTERNS: Array<[RegExp, string]> = [
-  [/Lie down on the floor and secure your feet\.?/gi, "Allongez-vous au sol et calezz vos pieds."],
+  [/Lie down on the floor and secure your feet\.?/gi, "Allongez-vous au sol et calez vos pieds."],
   [/Your legs should be bent at the knees\.?/gi, "Vos jambes doivent être fléchies au niveau des genoux."],
   [/Place your hands behind or to the side of your head\.?/gi, "Placez vos mains derrière ou sur les côtés de votre tête."],
   [/You will begin with your back on the ground\.?/gi, "Commencez le dos bien à plat sur le sol."],

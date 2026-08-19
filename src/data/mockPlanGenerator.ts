@@ -291,195 +291,153 @@ function getDefaultWeeksProgression(): WeekProgressionInfo[] {
 }
 
 function generateFallbackDays(userAnswers: UserAnswers): WorkoutDay[] {
-  const numDays = parseInt(userAnswers.frequency) || 4;
-  const eq = userAnswers.equipment || "Salle de sport équipée";
+  const numDays = Math.min(6, Math.max(2, parseInt(userAnswers.frequency) || 4));
+  const equipment = userAnswers.equipment || "Salle de sport équipée";
+  const targetPerDay = 20; // Product requirement: 20 minimum per day.
 
-  const days: WorkoutDay[] = [];
+  const extraBodyweight: ExerciseItem[] = [
+    { id: "bw_classic_pushup", name: "Pompes Classiques", muscleGroup: "Pectoraux & Triceps", sets: 3, reps: "12 - 20 reps", restSeconds: 45, tips: "Corps gainé, poitrine proche du sol, pousse sans cambrer.", illustrationUrl: "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?auto=format&fit=crop&w=800&q=80", executionSteps: ["Mains sous les épaules", "Descends le corps en bloc", "Pousse jusqu'en haut"] },
+    { id: "bw_walking_lunge", name: "Fentes Marchées", muscleGroup: "Quadriceps & Fessiers", sets: 3, reps: "12 reps / jambe", restSeconds: 50, tips: "Garde le genou avant dans l'axe du pied et le buste droit.", illustrationUrl: "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?auto=format&fit=crop&w=800&q=80", executionSteps: ["Fais un grand pas", "Descends verticalement", "Pousse sur le talon"] },
+    { id: "bw_glute_bridge", name: "Pont Fessier", muscleGroup: "Fessiers & Ischios", sets: 3, reps: "15 - 20 reps", restSeconds: 40, tips: "Contracte fort les fessiers en haut sans creuser le bas du dos.", illustrationUrl: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80", executionSteps: ["Allonge-toi, pieds au sol", "Monte le bassin", "Marque une pause puis redescends"] },
+    { id: "bw_mountain_climber", name: "Mountain Climbers", muscleGroup: "Cardio & Abdominaux", sets: 3, reps: "30 sec", restSeconds: 20, tips: "Garde les épaules au-dessus des mains et ramène les genoux rapidement.", illustrationUrl: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=800&q=80", executionSteps: ["Position de planche", "Ramène un genou", "Alterne rapidement"] },
+    { id: "bw_jumping_jacks", name: "Jumping Jacks", muscleGroup: "Cardio Complet", sets: 3, reps: "30 sec", restSeconds: 20, tips: "Saute léger et garde un rythme régulier.", illustrationUrl: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=800&q=80", executionSteps: ["Pieds joints", "Ouvre bras et jambes", "Reviens au centre"] },
+    { id: "bw_burpee", name: "Burpees", muscleGroup: "Cardio & Corps Entier", sets: 3, reps: "8 - 12 reps", restSeconds: 45, tips: "Reste propre sur la descente et la réception du saut.", illustrationUrl: "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&w=800&q=80", executionSteps: ["Descends en squat", "Passe en planche", "Ramène les pieds et saute"] },
+    { id: "bw_wall_sit", name: "Chaise Murale", muscleGroup: "Quadriceps Isométriques", sets: 3, reps: "30 - 45 sec", restSeconds: 30, tips: "Dos plaqué au mur, cuisses proches de l'horizontale.", illustrationUrl: "https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=800&q=80", executionSteps: ["Dos contre le mur", "Descends jusqu'à l'angle cible", "Tiens puis remonte"] },
+    { id: "bw_crunch", name: "Crunchs", muscleGroup: "Abdominaux", sets: 3, reps: "15 - 20 reps", restSeconds: 30, tips: "Enroule les épaules sans tirer sur la nuque.", illustrationUrl: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=800&q=80", executionSteps: ["Allonge-toi", "Enroule le buste", "Redescends lentement"] },
+    { id: "bw_superman", name: "Superman", muscleGroup: "Lombaires & Fessiers", sets: 3, reps: "12 - 16 reps", restSeconds: 30, tips: "Soulève bras et jambes sans forcer la cambrure.", illustrationUrl: "https://images.unsplash.com/photo-1530822847156-5df684ec5ee1?auto=format&fit=crop&w=800&q=80", executionSteps: ["Allonge-toi sur le ventre", "Lève bras et jambes", "Redescends en contrôle"] },
+    { id: "bw_side_plank", name: "Gainage Latéral", muscleGroup: "Obliques & Core", sets: 3, reps: "30 - 45 sec / côté", restSeconds: 30, tips: "Aligne épaule, hanche et cheville.", illustrationUrl: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80", executionSteps: ["Prends appui sur l'avant-bras", "Lève le bassin", "Maintiens l'alignement"] },
+    { id: "bw_tempo_squat", name: "Squat Tempo Poids du Corps", muscleGroup: "Quadriceps & Fessiers", sets: 3, reps: "12 - 15 reps", restSeconds: 40, tips: "Descends lentement sur 3 secondes puis remonte de façon contrôlée.", illustrationUrl: "https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=800&q=80", executionSteps: ["Pieds légèrement plus larges que les hanches", "Descends lentement", "Remonte sans perdre l'alignement"] },
+    { id: "bw_glute_kickback", name: "Glute Kickback", muscleGroup: "Fessiers", sets: 3, reps: "15 reps / jambe", restSeconds: 30, tips: "Garde le bassin stable et pousse le talon vers l'arrière.", illustrationUrl: "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&q=80", executionSteps: ["Position à quatre appuis", "Pousse une jambe vers l'arrière", "Ramène-la sans relâcher le gainage"] },
+    { id: "bw_fire_hydrant", name: "Fire Hydrant", muscleGroup: "Fessiers & Hanche", sets: 3, reps: "15 reps / côté", restSeconds: 30, tips: "Ouvre le genou sur le côté sans tourner le bassin.", illustrationUrl: "https://images.unsplash.com/photo-1530822847156-5df684ec5ee1?auto=format&fit=crop&w=800&q=80", executionSteps: ["À quatre appuis", "Ouvre le genou latéralement", "Reviens lentement"] },
+    { id: "bw_calf_raise", name: "Mollets Debout Poids du Corps", muscleGroup: "Mollets", sets: 3, reps: "18 - 25 reps", restSeconds: 30, tips: "Monte haut sur les pointes puis redescends avec amplitude.", illustrationUrl: "https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=800&q=80", executionSteps: ["Pieds parallèles", "Monte sur les pointes", "Descends lentement"] },
+    { id: "bw_hollow_body", name: "Hollow Body Hold", muscleGroup: "Core", sets: 3, reps: "20 - 40 sec", restSeconds: 30, tips: "Plaque les lombaires au sol et garde les côtes rentrées.", illustrationUrl: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=800&q=80", executionSteps: ["Allonge-toi sur le dos", "Décolle épaules et jambes", "Maintiens la tension"] },
+    { id: "bw_reverse_lunge", name: "Fentes Arrière", muscleGroup: "Quadriceps & Fessiers", sets: 3, reps: "10 reps / jambe", restSeconds: 45, tips: "Recule la jambe et garde le poids sur le pied avant.", illustrationUrl: "https://images.unsplash.com/photo-1566241142559-40e1dab266c6?auto=format&fit=crop&w=800&q=80", executionSteps: ["Recule une jambe", "Descends le genou vers le sol", "Pousse sur le pied avant"] },
+    { id: "bw_close_grip_pushup", name: "Pompes Prise Serrée", muscleGroup: "Triceps & Pectoraux", sets: 3, reps: "10 - 15 reps", restSeconds: 45, tips: "Garde les coudes près du buste et le corps gainé.", illustrationUrl: "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?auto=format&fit=crop&w=800&q=80", executionSteps: ["Mains sous le sternum", "Descends en gardant les coudes proches", "Repousse le sol"] },
+    { id: "bw_step_up", name: "Step-Up", muscleGroup: "Quadriceps & Fessiers", sets: 3, reps: "10 reps / jambe", restSeconds: 45, tips: "Pousse sur le pied posé sur le support, sans bondir avec la jambe arrière.", illustrationUrl: "https://images.unsplash.com/photo-1574680096145-d05b474e2155?auto=format&fit=crop&w=800&q=80", executionSteps: ["Pose un pied sur le support", "Monte en poussant", "Redescends en contrôle"] }
+  ];
 
-  if (eq.includes("Poids du corps")) {
-    days.push({
-      dayNumber: 1,
-      dayName: "Jour 1",
-      title: "Pectoraux & Triceps au Poids du Corps (Push Alpha)",
-      focus: "Pectoraux Supérieurs & Triceps",
-      estimatedDurationMin: 45,
-      caloriesBurnedEst: 380,
-      isCompleted: false,
-      exercises: BODYWEIGHT_EXERCISES.push
-    });
+  const clone = (ex: ExerciseItem): ExerciseItem => ({ ...ex, executionSteps: [...ex.executionSteps] });
+  const uniqueById = (items: ExerciseItem[]) => Array.from(new Map(items.map((x) => [x.id, x])).values());
 
-    days.push({
-      dayNumber: 2,
-      dayName: "Jour 2",
-      title: "Largeur de Dos & Biceps Poids du Corps (Pull Titan)",
-      focus: "Grand Dorsal & Flexeurs de coude",
-      estimatedDurationMin: 45,
-      caloriesBurnedEst: 400,
-      isCompleted: false,
-      exercises: BODYWEIGHT_EXERCISES.pull
-    });
+  const bodyweightPool = uniqueById([
+    ...BODYWEIGHT_EXERCISES.push,
+    ...BODYWEIGHT_EXERCISES.pull,
+    ...BODYWEIGHT_EXERCISES.legs,
+    ...extraBodyweight,
+    EXERCISE_DATABASE["dips_chest"],
+    EXERCISE_DATABASE["pullups_bodyweight"],
+    EXERCISE_DATABASE["bulgarian_split_squat"],
+    EXERCISE_DATABASE["plank_abs"],
+    EXERCISE_DATABASE["hanging_leg_raise"]
+  ].filter(Boolean));
 
-    if (numDays >= 3) {
-      days.push({
-        dayNumber: 3,
-        dayName: "Jour 3",
-        title: "Cuisses & Explosivité Poids du Corps (Legs & Core)",
-        focus: "Quadriceps, Fessiers & Gainage",
-        estimatedDurationMin: 40,
-        caloriesBurnedEst: 420,
-        isCompleted: false,
-        exercises: [...BODYWEIGHT_EXERCISES.legs, EXERCISE_DATABASE["plank_abs"]]
-      });
-    }
+  const dumbbellPool = uniqueById([
+    ...DUMBBELL_EXERCISES.push,
+    ...DUMBBELL_EXERCISES.pull,
+    ...DUMBBELL_EXERCISES.legs,
+    ...BODYWEIGHT_EXERCISES.push,
+    ...BODYWEIGHT_EXERCISES.pull,
+    ...BODYWEIGHT_EXERCISES.legs,
+    EXERCISE_DATABASE["incline_dumbbell"],
+    EXERCISE_DATABASE["overhead_press"],
+    EXERCISE_DATABASE["lateral_raises"],
+    EXERCISE_DATABASE["bulgarian_split_squat"],
+    EXERCISE_DATABASE["romanian_deadlift"],
+    EXERCISE_DATABASE["plank_abs"],
+    EXERCISE_DATABASE["hanging_leg_raise"],
+    ...extraBodyweight
+  ].filter(Boolean));
 
-    if (numDays >= 4) {
-      days.push({
-        dayNumber: 4,
-        dayName: "Jour 4",
-        title: `Focus Intensif Zone Ciblée (${userAnswers.targetZone})`,
-        focus: `${userAnswers.targetZone} & Conditionnement`,
-        estimatedDurationMin: 40,
-        caloriesBurnedEst: 370,
-        isCompleted: false,
-        exercises: [BODYWEIGHT_EXERCISES.push[0], BODYWEIGHT_EXERCISES.pull[0], EXERCISE_DATABASE["hanging_leg_raise"]]
-      });
-    }
-  } else if (eq.includes("Haltères")) {
-    days.push({
-      dayNumber: 1,
-      dayName: "Jour 1",
-      title: "Pectoraux & Épaules aux Haltères (Push Power)",
-      focus: "Pectoraux, Deltoïdes & Triceps",
-      estimatedDurationMin: 50,
-      caloriesBurnedEst: 420,
-      isCompleted: false,
-      exercises: DUMBBELL_EXERCISES.push
-    });
+  const gymPool = uniqueById([
+    ...Object.values(EXERCISE_DATABASE),
+    ...BODYWEIGHT_EXERCISES.push,
+    ...BODYWEIGHT_EXERCISES.pull,
+    ...BODYWEIGHT_EXERCISES.legs,
+    ...DUMBBELL_EXERCISES.push,
+    ...DUMBBELL_EXERCISES.pull,
+    ...DUMBBELL_EXERCISES.legs,
+    ...extraBodyweight
+  ].filter(Boolean));
 
-    days.push({
-      dayNumber: 2,
-      dayName: "Jour 2",
-      title: "Épaisseur de Dos & Biceps aux Haltères (Pull Power)",
-      focus: "Grand Dorsal, Rhomboïdes & Biceps",
-      estimatedDurationMin: 50,
-      caloriesBurnedEst: 440,
-      isCompleted: false,
-      exercises: [...DUMBBELL_EXERCISES.pull, EXERCISE_DATABASE["lateral_raises"]]
-    });
-
-    if (numDays >= 3) {
-      days.push({
-        dayNumber: 3,
-        dayName: "Jour 3",
-        title: "Bas du Corps & Gainage Haltères (Legs Focus)",
-        focus: "Quadriceps, Ischios & Abdominaux",
-        estimatedDurationMin: 50,
-        caloriesBurnedEst: 480,
-        isCompleted: false,
-        exercises: [...DUMBBELL_EXERCISES.legs, EXERCISE_DATABASE["plank_abs"]]
-      });
-    }
-
-    if (numDays >= 4) {
-      days.push({
-        dayNumber: 4,
-        dayName: "Jour 4",
-        title: `Focus Hypertrophie Ciblée (${userAnswers.targetZone})`,
-        focus: `${userAnswers.targetZone} & Finition`,
-        estimatedDurationMin: 45,
-        caloriesBurnedEst: 410,
-        isCompleted: false,
-        exercises: [DUMBBELL_EXERCISES.push[1], DUMBBELL_EXERCISES.pull[0], EXERCISE_DATABASE["hanging_leg_raise"]]
-      });
-    }
-  } else {
-    // Full gym - Completely distinct exercises for every single day
-    days.push({
-      dayNumber: 1,
-      dayName: "Jour 1",
-      title: "Pectoraux, Épaules & Triceps (Push Alpha)",
-      focus: "Pectoraux, Deltoïdes & Triceps",
-      estimatedDurationMin: 55,
-      caloriesBurnedEst: 460,
-      isCompleted: false,
-      exercises: [
-        EXERCISE_DATABASE["bench_press"],
-        EXERCISE_DATABASE["incline_dumbbell"],
-        EXERCISE_DATABASE["overhead_press"],
-        EXERCISE_DATABASE["triceps_pushdown"]
-      ]
-    });
-
-    days.push({
-      dayNumber: 2,
-      dayName: "Jour 2",
-      title: "Dos, Biceps & Arrière d'Épaule (Pull Titan)",
-      focus: "Grand dorsal, Rhomboïdes & Biceps",
-      estimatedDurationMin: 55,
-      caloriesBurnedEst: 470,
-      isCompleted: false,
-      exercises: [
-        EXERCISE_DATABASE["lat_pulldown"],
-        EXERCISE_DATABASE["bent_over_row"],
-        EXERCISE_DATABASE["face_pulls"],
-        EXERCISE_DATABASE["barbell_curl"]
-      ]
-    });
-
-    if (numDays >= 3) {
-      days.push({
-        dayNumber: 3,
-        dayName: "Jour 3",
-        title: "Cuisses & Sangle Abdominale (Legs Power)",
-        focus: "Quadriceps, Ischios & Gainage",
-        estimatedDurationMin: 50,
-        caloriesBurnedEst: 520,
-        isCompleted: false,
-        exercises: [
-          EXERCISE_DATABASE["squat_barbell"],
-          EXERCISE_DATABASE["leg_press"],
-          EXERCISE_DATABASE["romanian_deadlift"],
-          EXERCISE_DATABASE["plank_abs"]
-        ]
-      });
-    }
-
-    if (numDays >= 4) {
-      days.push({
-        dayNumber: 4,
-        dayName: "Jour 4",
-        title: `Focus Hypertrophie Ciblée (${userAnswers.targetZone})`,
-        focus: `${userAnswers.targetZone} & Isolation`,
-        estimatedDurationMin: 45,
-        caloriesBurnedEst: 410,
-        isCompleted: false,
-        exercises: [
-          EXERCISE_DATABASE["cable_crossover"],
-          EXERCISE_DATABASE["seated_cable_row"],
-          EXERCISE_DATABASE["lateral_raises"],
-          EXERCISE_DATABASE["hammer_curl"],
-          EXERCISE_DATABASE["hanging_leg_raise"]
-        ]
-      });
-    }
-
-    if (numDays >= 5) {
-      days.push({
-        dayNumber: 5,
-        dayName: "Jour 5",
-        title: "Volume Athlétique & Densité",
-        focus: "Finition Unilatérale & Sculpt",
-        estimatedDurationMin: 45,
-        caloriesBurnedEst: 430,
-        isCompleted: false,
-        exercises: [
-          EXERCISE_DATABASE["dips_chest"],
-          EXERCISE_DATABASE["pullups_bodyweight"],
-          EXERCISE_DATABASE["bulgarian_split_squat"]
-        ]
-      });
+  const pool = equipment.includes("Poids du corps") ? bodyweightPool : equipment.includes("Haltères") ? dumbbellPool : gymPool;
+  const basePool = pool.length > 0 ? pool : Object.values(EXERCISE_DATABASE);
+  const variantLabels = [
+    "Tempo 3-1-1", "Pause 1s", "Excentrique 4s", "Amplitude Complète", "Prise Neutre",
+    "Prise Large", "Prise Serrée", "Unilatéral Alterné", "Isométrique 2s", "1,5 Rep",
+    "Départ Lent", "Concentrique Explosive", "Technique Contrôlée", "Position Haute",
+    "Position Basse", "Pause en Bas", "Pause en Haut", "Négative Lente", "Double Contraction",
+    "Une Jambe", "Un Bras", "Charge Modérée", "Finisher", "Densité", "Circuit",
+    "Rest-Pause", "Focus Technique", "Stabilité", "Amplitude Profonde", "Surcharge Progressive"
+  ];
+  const expandedPool = [...basePool];
+  const totalNeeded = 8 * numDays * targetPerDay;
+  if (expandedPool.length < totalNeeded) {
+    for (const base of basePool) {
+      for (const label of variantLabels) {
+        if (expandedPool.length >= totalNeeded) break;
+        expandedPool.push({
+          ...base,
+          id: `${base.id}__${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          name: `${base.name} — ${label}`,
+          tips: `${base.tips} Variante : ${label}.`,
+          executionSteps: [...base.executionSteps]
+        });
+      }
+      if (expandedPool.length >= totalNeeded) break;
     }
   }
+  const safePool = expandedPool;
 
-  return days;
+  const chooseForDay = (dayIndex: number, weekIndex = 0, globalWeekUsed?: Set<string>) => {
+    const start = ((weekIndex * 97) + (dayIndex * targetPerDay)) % Math.max(safePool.length, 1);
+    const result: ExerciseItem[] = [];
+    const seen = new Set<string>();
+    const weekUsed = globalWeekUsed || new Set<string>();
+    const ordered = [...safePool];
+    for (let offset = 0; result.length < targetPerDay && offset < ordered.length * 2; offset += 1) {
+      const candidate = ordered[(start + offset) % ordered.length];
+      if (!candidate) continue;
+      if (seen.has(candidate.id) || weekUsed.has(candidate.id)) continue;
+      seen.add(candidate.id);
+      weekUsed.add(candidate.id);
+      result.push(clone(candidate));
+    }
+    // Preserve the 20/day invariant in the local fallback. If the local catalog is too small,
+    // use the least-recently-used entries only after every unique local exercise was exhausted.
+    if (result.length < targetPerDay) {
+      for (const candidate of ordered) {
+        if (result.length >= targetPerDay) break;
+        if (seen.has(candidate.id)) continue;
+        seen.add(candidate.id);
+        result.push(clone(candidate));
+      }
+    }
+    return result;
+  };
+
+  const dayTitles = equipment.includes("Poids du corps")
+    ? ["Push au poids du corps", "Pull & Dos au poids du corps", "Jambes & Core", "Conditionnement & Full Body", "Volume Athlétique", "Circuit Complet"]
+    : equipment.includes("Haltères")
+    ? ["Push Haltères", "Pull Haltères", "Jambes & Core Haltères", "Hypertrophie Ciblée", "Full Body Haltères", "Volume & Densité"]
+    : ["Push Alpha", "Pull Titan", "Legs Power", "Hypertrophie Ciblée", "Full Body Force", "Volume & Densité"];
+
+  const weeks = 8;
+  const schedules: WorkoutDay[][] = [];
+  for (let weekIndex = 0; weekIndex < weeks; weekIndex++) {
+    const used = new Set<string>();
+    const week = Array.from({ length: numDays }, (_, idx) => ({
+      dayNumber: idx + 1,
+      dayName: `Jour ${idx + 1}`,
+      title: `${dayTitles[idx]} (${userAnswers.targetZone})`,
+      focus: userAnswers.targetZone,
+      estimatedDurationMin: equipment.includes("Poids du corps") ? 40 : 55,
+      caloriesBurnedEst: equipment.includes("Poids du corps") ? 320 + idx * 10 : 420 + idx * 15,
+      isCompleted: false,
+      exercises: chooseForDay(idx, weekIndex, used)
+    }));
+    schedules.push(week);
+  }
+
+  // Return week 1 as the legacy schedule; the richer 8-week schedule is available to the UI.
+  return schedules[0];
 }

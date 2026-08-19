@@ -30,7 +30,10 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [currentProgramWeek, setCurrentProgramWeek] = useState(1);
   const [weekTransitionBanner, setWeekTransitionBanner] = useState<number | null>(null);
-  const [workoutIdsForWeek, setWorkoutIdsForWeek] = useState<string[]>([]);
+  // Map des IDs de séances par semaine du programme : clé "numéroSemaine-indexJour" -> workoutId.
+  // Corrige le bug où une seule semaine de rappels était créée pour tout le programme de 8 semaines,
+  // ce qui faisait pointer les semaines suivantes vers les séances (déjà faites) de la semaine 1.
+  const [workoutIdsMap, setWorkoutIdsMap] = useState<Record<string, string>>({});
 
   // Date de début du programme — fixée une seule fois au premier déblocage, persistée
   // pour rester stable même après rechargement de la page.
@@ -44,35 +47,55 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
     return new Date(stored);
   });
   const totalProgramWeeks = plan.totalWeeks || 8;
+  const currentWeekSchedule = plan.weeklySchedules?.[currentProgramWeek - 1] || plan.weekSchedule;
   const programEndDate = new Date(programStartDate);
   programEndDate.setDate(programEndDate.getDate() + totalProgramWeeks * 7);
   const formatFrDate = (d: Date) =>
     d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
-  // Enregistre automatiquement le programme généré auprès du système de rappels —
+  // Enregistre un lot de rappels pour une semaine donnée du programme — réutilisée au premier
+  // chargement (semaine 1) ET à chaque passage à une nouvelle semaine (semaines 2 à 8).
+  const registerRemindersForWeek = useCallback(
+    (weekNumber: number) => {
+      if (!userEmail) return;
+      const scheduleForWeek = plan.weeklySchedules?.[weekNumber - 1] || plan.weekSchedule;
+      const offsetDays = (weekNumber - 1) * scheduleForWeek.length;
+
+      fetch("/api/reminders/register-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: userEmail,
+          weekSchedule: scheduleForWeek,
+          preferredTime: plan.userAnswers?.preferredWorkoutTime || "18:00",
+          objective: plan.userAnswers?.objective || "Transformation physique",
+          startOffsetDays: offsetDays
+        })
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data.workoutIds)) {
+            setWorkoutIdsMap((prev) => {
+              const next = { ...prev };
+              data.workoutIds.forEach((id: string, idx: number) => {
+                next[`${weekNumber}-${idx}`] = id;
+              });
+              return next;
+            });
+          }
+        })
+        .catch((e) => console.warn("Enregistrement des rappels impossible:", e));
+    },
+    [userEmail, plan.weeklySchedules, plan.weekSchedule, plan.userAnswers]
+  );
+
+  // Enregistre automatiquement la semaine 1 auprès du système de rappels —
   // UNE SEULE FOIS par utilisateur (pas à chaque rechargement de page).
   useEffect(() => {
     const registerKey = `fysiqforge_reminders_registered_${userEmail}`;
     if (!userEmail || localStorage.getItem(registerKey)) return;
-
-    fetch("/api/reminders/register-plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: userEmail,
-        weekSchedule: plan.weekSchedule,
-        preferredTime: plan.userAnswers?.preferredWorkoutTime || "18:00",
-        objective: plan.userAnswers?.objective || "Transformation physique"
-      })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.workoutIds) {
-          setWorkoutIdsForWeek(data.workoutIds);
-          localStorage.setItem(registerKey, "1");
-        }
-      })
-      .catch((e) => console.warn("Enregistrement des rappels impossible:", e));
+    registerRemindersForWeek(1);
+    localStorage.setItem(registerKey, "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail]);
 
@@ -113,7 +136,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
       id: "log-demo-1",
       date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toLocaleDateString(language === "FR" ? "fr-FR" : "en-US"),
       dayNumber: 1,
-      dayTitle: plan.weekSchedule[0]?.title || "Jour 1: Push Alpha",
+      dayTitle: currentWeekSchedule[0]?.title || "Jour 1: Push Alpha",
       durationMinutes: 52,
       feelingRating: 5,
       notes: "Superbe congestion sur les pectoraux ! Sensation de puissance.",
@@ -122,7 +145,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
   ]);
 
   const t = UI_LABELS[language];
-  const currentDay = plan.weekSchedule[activeDayIdx] || plan.weekSchedule[0];
+  const currentDay = currentWeekSchedule[activeDayIdx] || currentWeekSchedule[0];
 
   const handleStartGuidedWorkout = (exIdx = 0) => {
     setStartExerciseIdx(exIdx);
@@ -142,7 +165,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
 
     // Informe le système de rappels que cette séance est bien faite — le rappel
     // et les notifications liées se referment automatiquement côté serveur.
-    const workoutId = workoutIdsForWeek[activeDayIdx];
+    const workoutId = workoutIdsMap[`${currentProgramWeek}-${activeDayIdx}`];
     if (workoutId && userEmail) {
       fetch("/api/reminders/complete", {
         method: "POST",
@@ -161,7 +184,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
   // en signalant clairement le passage à la semaine suivante du programme.
   const handleAdvanceToNextDayAfterNutrition = () => {
     setShowNutritionModal(false);
-    const isLastDayOfWeek = activeDayIdx >= plan.weekSchedule.length - 1;
+    const isLastDayOfWeek = activeDayIdx >= currentWeekSchedule.length - 1;
 
     if (isLastDayOfWeek) {
       const nextWeek = currentProgramWeek + 1;
@@ -169,6 +192,11 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
       setActiveDayIdx(0);
       setWeekTransitionBanner(nextWeek);
       window.setTimeout(() => setWeekTransitionBanner(null), 5000);
+      // Enregistre les rappels de la nouvelle semaine — sans ça, les rappels
+      // pointeraient encore vers les séances (déjà faites) de la semaine 1.
+      if (nextWeek <= (plan.totalWeeks || 8)) {
+        registerRemindersForWeek(nextWeek);
+      }
     } else {
       setActiveDayIdx((prev) => prev + 1);
     }
@@ -176,17 +204,13 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
 
   // Replace exercise in plan schedule
   const handleReplaceExerciseInPlan = (originalExerciseId: string, newExercise: ExerciseItem) => {
-    const updatedSchedule = plan.weekSchedule.map((day) => {
-      const updatedExercises = day.exercises.map((ex) =>
-        ex.id === originalExerciseId ? newExercise : ex
-      );
-      return { ...day, exercises: updatedExercises };
-    });
-
-    setPlan({
-      ...plan,
-      weekSchedule: updatedSchedule
-    });
+    const updatedCurrent = currentWeekSchedule.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((ex) => ex.id === originalExerciseId ? newExercise : ex)
+    }));
+    const schedules = plan.weeklySchedules ? plan.weeklySchedules.map((week) => week.map((day) => ({ ...day, exercises: [...day.exercises] }))) : [plan.weekSchedule.map((day) => ({ ...day, exercises: [...day.exercises] }))];
+    schedules[currentProgramWeek - 1] = updatedCurrent;
+    setPlan({ ...plan, weekSchedule: schedules[0], weeklySchedules: schedules });
   };
 
   return (
@@ -382,7 +406,7 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
 
             {/* Days Selector Tabs */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              {plan.weekSchedule.map((day, idx) => {
+              {currentWeekSchedule.map((day, idx) => {
                 const isDone = completedDays.includes(day.dayNumber);
                 return (
                   <button
