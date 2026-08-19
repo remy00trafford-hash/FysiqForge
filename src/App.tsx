@@ -42,9 +42,19 @@ export default function App() {
       const firstDay = Array.isArray(firstWeek) ? firstWeek[0] : null;
       const count = Array.isArray(firstDay?.exercises) ? firstDay.exercises.length : 0;
       if (parsed?.sessionVersion === PLAN_SESSION_VERSION && parsed?.plan && parsed?.email && count >= 20) {
-        setGeneratedPlan(parsed.plan); setUserEmail(parsed.email); setIsUnlocked(true); setCurrentStep("FULL_PLAN");
-      } else localStorage.removeItem("fysiqforge_unlocked_session");
-    } catch { localStorage.removeItem("fysiqforge_unlocked_session"); }
+        setGeneratedPlan(parsed.plan);
+        setUserEmail(parsed.email);
+        setIsUnlocked(true);
+        localStorage.setItem("fysiqforge_plan_tier", String(parsed.plan.tierId || "performance"));
+        setCurrentStep("FULL_PLAN");
+      } else {
+        localStorage.removeItem("fysiqforge_unlocked_session");
+        localStorage.removeItem("fysiqforge_plan_tier");
+      }
+    } catch {
+      localStorage.removeItem("fysiqforge_unlocked_session");
+      localStorage.removeItem("fysiqforge_plan_tier");
+    }
   }, []);
 
   const handleStartFlow = () => setCurrentStep("PHOTO");
@@ -72,6 +82,7 @@ export default function App() {
 
   const handlePaymentSuccess = (email: string, tierId: PlanTierId) => {
     setUserEmail(email); setIsUnlocked(true);
+    localStorage.setItem("fysiqforge_plan_tier", tierId);
     if (generatedPlan) {
       const unlockedPlan: TrainingPlan = {
         ...generatedPlan,
@@ -86,6 +97,8 @@ export default function App() {
     setCurrentStep("FULL_PLAN");
   };
 
+  const canUsePremiumCoach = Boolean(isUnlocked && generatedPlan && generatedPlan.tierId !== "essentiel");
+
   return (
     <div className="min-h-screen bg-[#0D0D11] text-white font-sans antialiased selection:bg-[#FF5500] selection:text-white relative">
       <Header currentStep={currentStep} onNavigateStep={setCurrentStep} selectedCurrency={selectedCurrency} onCurrencyChange={setSelectedCurrency} language={language} onLanguageChange={setLanguage} userEmail={userEmail} onOpenAdmin={() => setShowAdminModal(true)} onOpenCoachChat={() => setShowCoachChatModal(true)} onOpenFaq={() => setShowFaqModal(true)} isUnlocked={isUnlocked} />
@@ -98,7 +111,9 @@ export default function App() {
         {currentStep === "PAYWALL" && <PaywallModal onPaymentSuccess={handlePaymentSuccess} onBack={() => setCurrentStep("AHA_PREVIEW")} selectedCurrency={selectedCurrency} />}
         {currentStep === "FULL_PLAN" && generatedPlan && <FullPlanDashboard plan={generatedPlan} userEmail={userEmail || "membre.fysiq@gmail.com"} language={language} />}
       </main>
-      <button onClick={() => setShowCoachChatModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer border border-white/20" title="Coach IA FysiqForge"><Bot className="w-6 h-6"/><span className="font-black text-xs uppercase hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span></button>
+      {canUsePremiumCoach && (
+        <button onClick={() => setShowCoachChatModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer border border-white/20" title="Coach IA FysiqForge"><Bot className="w-6 h-6"/><span className="font-black text-xs uppercase hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span></button>
+      )}
       {showCoachChatModal && <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"><div className="max-w-2xl w-full relative"><button onClick={() => setShowCoachChatModal(false)} className="absolute -top-12 right-0 bg-white/10 text-white p-2 rounded-xl"><X className="w-5 h-5"/></button><AiCoachChat userAnswers={userAnswers} tierId={generatedPlan?.tierId || "performance"}/></div></div>}
       {showAdminModal && <AdminDashboard onClose={() => setShowAdminModal(false)} />}
       {showFaqModal && <FaqAndSupportModal onClose={() => setShowFaqModal(false)} />}
