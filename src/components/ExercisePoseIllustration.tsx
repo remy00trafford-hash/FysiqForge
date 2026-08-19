@@ -2,20 +2,10 @@ import React from "react";
 import {
   PremiumExerciseIllustration,
   classifyExerciseMotion,
-  EXERCISE_MOTIONS
+  EXERCISE_MOTIONS as PREMIUM_EXERCISE_MOTIONS
 } from "./PremiumExerciseIllustration";
 
-export type PoseCategory =
-  | "push"
-  | "pull"
-  | "squat"
-  | "lunge"
-  | "core"
-  | "hinge"
-  | "cardio"
-  | "stretch"
-  | "shoulder"
-  | "arm";
+export type PoseCategory = "push" | "pull" | "squat" | "lunge" | "core" | "hinge" | "cardio" | "stretch" | "shoulder" | "arm";
 
 export function classifyExercisePose(name: string, muscleGroup?: string): PoseCategory {
   const text = `${name} ${muscleGroup || ""}`.toLowerCase();
@@ -38,20 +28,9 @@ interface ExercisePoseIllustrationProps {
   muscleGroup?: string;
 }
 
-export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({
-  exerciseId,
-  exerciseName = "Exercice",
-  muscleGroup = "Mouvement"
-}) => (
-  <PremiumExerciseIllustration
-    exerciseId={exerciseId}
-    exerciseName={exerciseName}
-    muscleGroup={muscleGroup}
-  />
+export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({ exerciseId, exerciseName = "Exercice", muscleGroup = "Mouvement" }) => (
+  <PremiumExerciseIllustration exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} />
 );
 
-// Compatibility export for existing imports. The renderer resolves a specific motion
-// by exercise ID first, then by exercise name/muscle group; it never intentionally
-// downgrades a known exercise to a generic push/pull silhouette.
-export const EXERCISE_MOTIONS = EXERCISE_MOTIONS;
+export const EXERCISE_MOTIONS = PREMIUM_EXERCISE_MOTIONS;
 export { classifyExerciseMotion };
