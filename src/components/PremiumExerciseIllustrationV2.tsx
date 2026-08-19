@@ -1,124 +1,27 @@
 import React, { useMemo } from "react";
 import { classifyExerciseMotion, EXERCISE_MOTIONS, MotionFamily, PremiumMotionSpec } from "./PremiumExerciseIllustration";
 
-const C = {
-  navy: "#13233A", ink: "#17263A", muted: "#5E7085", line: "#D5DEE7", steel: "#718293",
-  skin: "#E7AD8C", skin2: "#F4C8AD", shirt: "#34485D", muscle: "#F05A32", orange: "#F26122",
-  white: "#FFFFFF", bg: "#F7FAFD"
-};
+const C = { navy:"#13233A", ink:"#17263A", muted:"#5E7085", line:"#D5DEE7", steel:"#718293", skin:"#E7AD8C", skin2:"#F4C8AD", shirt:"#34485D", muscle:"#F05A32", orange:"#F26122", white:"#FFFFFF", bg:"#F7FAFD" };
+type Stage = 0|1|2|3;
+const Line:React.FC<{x1:number;y1:number;x2:number;y2:number;w?:number;color?:string}> = ({x1,y1,x2,y2,w=7,color=C.skin}) => <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={w} strokeLinecap="round"/>;
+const Head:React.FC<{x:number;y:number}> = ({x,y}) => <circle cx={x} cy={y} r="9" fill={C.skin2} stroke={C.skin} strokeWidth="1.5"/>;
+const Highlight:React.FC<{x:number|string;y:number;w?:number;h?:number}> = ({x,y,w=18,h=10}) => <rect x={x} y={y} width={w} height={h} rx="5" fill={C.muscle}><animate attributeName="opacity" values=".45;1;.45" dur="1.2s" repeatCount="indefinite"/></rect>;
+const p=(s:Stage)=>[0,1,2,1][s];
 
-type Stage = 0 | 1 | 2 | 3;
-
-const Line: React.FC<{x1:number;y1:number;x2:number;y2:number;w?:number;color?:string}> = ({x1,y1,x2,y2,w=7,color=C.skin}) => (
-  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={w} strokeLinecap="round" />
-);
-const Head: React.FC<{x:number;y:number}> = ({x,y}) => <circle cx={x} cy={y} r="9" fill={C.skin2} stroke={C.skin} strokeWidth="1.5" />;
-const Highlight: React.FC<{x:number;y:number;w?:number;h?:number}> = ({x,y,w=18,h=10}) => <rect x={x} y={y} width={w} height={h} rx="5" fill={C.muscle}><animate attributeName="opacity" values=".45;1;.45" dur="1.2s" repeatCount="indefinite" /></rect>;
-
-function stageProgress(stage: Stage) { return [0, 1, 2, 1][stage]; }
-
-const Standing: React.FC<{stage:Stage; family:MotionFamily}> = ({stage,family}) => {
-  const p = stageProgress(stage);
-  const down = p * 18;
-  const isShoulder = family === "shoulderPress" || family === "lateralRaise";
-  const isCurl = family === "curl";
-  const isTri = family === "triceps";
-  const isCarry = family === "carry";
-  const isHinge = family === "hinge";
-  const armLift = isShoulder ? 30 + p * -28 : isCurl ? 110 - p * 28 : isTri ? 122 + p * 16 : 122;
+const Standing:React.FC<{stage:Stage;family:MotionFamily}> = ({stage,family}) => {
+  const q=p(stage), down=q*18, shoulder=67-down, arm=family==="shoulderPress"?30-q*28:family==="lateralRaise"?82-q*24:family==="curl"?110-q*30:family==="triceps"?118+q*18:122;
+  const legs=["squat","lunge","stepUp"].includes(family), hinge=family==="hinge";
   return <g>
-    <Head x={100} y={55-down} />
-    <path d={`M84 ${67-down} Q100 ${59-down} 116 ${67-down} L119 ${112-down} Q100 ${122-down} 81 ${112-down} Z`} fill={C.shirt} stroke="#4E667E" strokeWidth="1.5" />
-    <Highlight x={88} y={78-down} w={24} h={12} />
-    {isHinge ? <g>
-      <Line x1={88} y1={72-down} x2={72} y2={102} />
-      <Line x1={112} y1={72-down} x2={128} y2={102} />
-      <Line x1={72} y1={102} x2={68} y2={127} color={C.steel} />
-      <Line x1={128} y1={102} x2={132} y2={127} color={C.steel} />
-      <line x1="62" y1="128" x2="138" y2="128" stroke={C.steel} strokeWidth="5" />
-    </g> : <g>
-      <Line x1={89} y1={73-down} x2={77} y2={armLift-down} />
-      <Line x1={111} y1={73-down} x2={123} y2={armLift-down} />
-      {(isShoulder || isCurl || isTri) && <><circle cx="77" cy={armLift-down} r="5" fill={C.steel}/><circle cx="123" cy={armLift-down} r="5" fill={C.steel}/></>}
-      {isCarry && <><circle cx="70" cy={130-down} r="8" fill={C.steel}/><circle cx="130" cy={130-down} r="8" fill={C.steel}/></>}
-      {family === "squat" || family === "lunge" || family === "stepUp" ? <>
-        <Line x1="91" y1={112-down} x2={78} y2={151+down} />
-        <Line x1="109" y1={112-down} x2={122} y2={151+down} />
-        <Line x1="78" y1={151+down} x2={70} y2={190} color={C.skin} />
-        <Line x1="122" y1={151+down} x2={130} y2={190} color={C.skin} />
-        <Highlight x="80" y={132+down} w={15} h={10}/>
-      </> : <>
-        <Line x1="91" y1={112-down} x2="80" y2="190" />
-        <Line x1="109" y1={112-down} x2="120" y2="190" />
-      </>}
-    </g>}
-    <line x1="63" y1="194" x2="137" y2="194" stroke="#C7D2DC" strokeWidth="2" />
+    <Head x={100} y={55-down}/><path d={`M84 ${shoulder} Q100 ${shoulder-8} 116 ${shoulder} L119 ${112-down} Q100 ${122-down} 81 ${112-down} Z`} fill={C.shirt}/><Highlight x={88} y={78-down} w={24} h={12}/>
+    {hinge ? <><Line x1={88} y1={72-down} x2={72} y2={103}/><Line x1={112} y1={72-down} x2={128} y2={103}/><Line x1={72} y1={103} x2={68} y2={128} color={C.steel}/><Line x1={128} y1={103} x2={132} y2={128} color={C.steel}/><line x1="62" y1="129" x2="138" y2="129" stroke={C.steel} strokeWidth="5"/></> : <g><Line x1={89} y1={shoulder+6} x2={77} y2={arm}/><Line x1={111} y1={shoulder+6} x2={123} y2={arm}/>{["shoulderPress","lateralRaise","curl","triceps"].includes(family)&&<><circle cx="77" cy={arm} r="5" fill={C.steel}/><circle cx="123" cy={arm} r="5" fill={C.steel}/></>}{family==="carry"&&<><circle cx="70" cy={132-down} r="8" fill={C.steel}/><circle cx="130" cy={132-down} r="8" fill={C.steel}/></>}{legs?<><Line x1="91" y1={112-down} x2={78} y2={151+down}/><Line x1="109" y1={112-down} x2={122} y2={151+down}/><Line x1="78" y1={151+down} x2={70} y2={190}/><Line x1="122" y1={151+down} x2={130} y2={190}/><Highlight x={80} y={132+down} w={15} h={10}/></>:<><Line x1="91" y1={112-down} x2={80} y2="190"/><Line x1="109" y1={112-down} x2={120} y2="190"/></>}</g>}
+    <line x1="62" y1="194" x2="138" y2="194" stroke="#C7D2DC" strokeWidth="2"/>
   </g>;
 };
 
-const Bench: React.FC<{stage:Stage; family:MotionFamily}> = ({stage,family}) => {
-  const p = stageProgress(stage);
-  const y = family === "inclinePress" ? 78 : 96 - p * 28;
-  const angle = family === "inclinePress" ? -12 : 0;
-  return <g transform={`rotate(${angle} 100 150)`}>
-    <rect x="42" y="142" width="116" height="10" rx="5" fill={C.steel}/><line x1="54" y1="152" x2="54" y2="190" stroke={C.steel} strokeWidth="6"/><line x1="146" y1="152" x2="146" y2="190" stroke={C.steel} strokeWidth="6"/>
-    <Head x={69} y={120}/><path d="M77 129 Q101 118 125 131 L130 145 L76 145 Z" fill={C.shirt}/><Highlight x={89} y={128} w={23} h={11}/>
-    <Line x1={87} y1={132} x2={72} y2={116}/><Line x1={113} y1={132} x2={128} y2={116}/>
-    <Line x1={72} y1={116} x2={64} y2={y}/><Line x1={128} y1={116} x2={136} y2={y}/>
-    <line x1="48" y1={y} x2="152" y2={y} stroke={C.steel} strokeWidth="5" strokeLinecap="round"/><circle cx="48" cy={y} r="7" fill={C.ink}/><circle cx="152" cy={y} r="7" fill={C.ink}/>
-  </g>;
-};
+const Bench:React.FC<{stage:Stage;incline?:boolean}> = ({stage,incline=false}) => { const q=p(stage), y=incline?78:96-q*28; return <g transform={incline?"rotate(-12 100 150)":""}><rect x="42" y="142" width="116" height="10" rx="5" fill={C.steel}/><line x1="54" y1="152" x2="54" y2="190" stroke={C.steel} strokeWidth="6"/><line x1="146" y1="152" x2="146" y2="190" stroke={C.steel} strokeWidth="6"/><Head x={69} y={120}/><path d="M77 129 Q101 118 125 131 L130 145 L76 145 Z" fill={C.shirt}/><Highlight x={89} y={128} w={23} h={11}/><Line x1={87} y1={132} x2={72} y2={116}/><Line x1={113} y1={132} x2={128} y2={116}/><Line x1={72} y1={116} x2={64} y2={y}/><Line x1={128} y1={116} x2={136} y2={y}/><line x1="48" y1={y} x2="152" y2={y} stroke={C.steel} strokeWidth="5"/><circle cx="48" cy={y} r="7" fill={C.ink}/><circle cx="152" cy={y} r="7" fill={C.ink}/></g>; };
+const Pushup:React.FC<{stage:Stage}> = ({stage}) => { const q=p(stage), y=112+q*14; return <g><circle cx="45" cy={y-34} r="8" fill={C.skin2}/><line x1="53" y1={y-30} x2="118" y2={y-16} stroke={C.shirt} strokeWidth="13" strokeLinecap="round"/><Highlight x={74} y={y-25} w={25} h={11}/><Line x1={62} y1={y-22} x2={72} y2={y+12}/><Line x1={106} y1={y-17} x2={116} y2={y+12}/><Line x1={72} y1={y+12} x2={55} y2={y+32}/><Line x1={116} y1={y+12} x2={136} y2={y+28}/><line x1="28" y1="145" x2="155" y2="145" stroke="#C7D2DC" strokeWidth="2"/></g>; };
+const Pull:React.FC<{stage:Stage;family:MotionFamily}> = ({stage,family}) => { const q=p(stage); if(family==="pullup") return <g><line x1="30" y1="38" x2="170" y2="38" stroke={C.steel} strokeWidth="6"/><Head x={100} y={66-q*22}/><path d={`M84 ${79-q*22} Q100 ${70-q*22} 116 ${79-q*22} L119 ${112-q*22} Q100 ${121-q*22} 81 ${112-q*22} Z`} fill={C.shirt}/><Highlight x={88} y={82-q*22} w={24} h={10}/><Line x1={88} y1={82-q*22} x2={72} y2="45"/><Line x1={112} y1={82-q*22} x2={128} y2="45"/></g>; const y=92-q*20; return <g><Head x={74} y={72}/><path d="M83 82 Q104 72 124 84 L127 112 L82 112 Z" fill={C.shirt}/><Highlight x={92} y={87} w={22} h={10}/><Line x1={90} y1={88} x2={72+q*18} y2={y}/><Line x1={114} y1={88} x2={128-q*18} y2={y}/><Line x1={72+q*18} y1={y} x2={45+q*18} y2={y-15} color={C.steel}/><Line x1={128-q*18} y1={y} x2={155-q*18} y2={y-15} color={C.steel}/></g>; };
+const Core:React.FC<{stage:Stage;family:MotionFamily}> = ({stage,family}) => { const q=p(stage), lift=family==="legRaise"?q*18:q*8; return <g><line x1="35" y1="150" x2="165" y2="150" stroke="#C7D2DC" strokeWidth="2"/><circle cx="55" cy={118-lift} r="8" fill={C.skin2}/><line x1="63" y1={122-lift} x2="112" y2={130-lift} stroke={C.shirt} strokeWidth="13" strokeLinecap="round"/><Highlight x={78} y={124-lift} w={24} h={10}/>{family==="legRaise"?<><Line x1={112} y1={130-lift} x2={135} y2={105-lift}/><Line x1={135} y1={105-lift} x2={153} y2={80-lift}/><Line x1={112} y1={130-lift} x2={145} y2={122-lift}/><Line x1={145} y1={122-lift} x2={165} y2={96-lift}/></>:<><Line x1={112} y1={130-lift} x2={145} y2={142-lift}/><Line x1={145} y1={142-lift} x2={160} y2={150}/><Line x1={72} y1={125-lift} x2={62} y2={150}/></>}</g>; };
+const Pose:React.FC<{stage:Stage;family:MotionFamily}> = ({stage,family}) => { if(family==="benchPress") return <Bench stage={stage}/>; if(family==="inclinePress") return <Bench stage={stage} incline/>; if(["pushup","dip"].includes(family)) return <Pushup stage={stage}/>; if(["pulldown","row","pullup"].includes(family)) return <Pull stage={stage} family={family}/>; if(["core","plank","legRaise"].includes(family)) return <Core stage={stage} family={family}/>; return <Standing stage={stage} family={family}/>; };
 
-const Pushup: React.FC<{stage:Stage}> = ({stage}) => { const p=stageProgress(stage); const bodyY=112+p*14; return <g>
-  <circle cx="45" cy={bodyY-34} r="8" fill={C.skin2}/><line x1="53" y1={bodyY-30} x2="118" y2={bodyY-16} stroke={C.shirt} strokeWidth="13" strokeLinecap="round"/><Highlight x="74" y={bodyY-25} w={25} h={11}/>
-  <Line x1="62" y1={bodyY-22} x2="72" y2={bodyY+12}/><Line x1="106" y1={bodyY-17} x2="116" y2={bodyY+12}/><Line x1="72" y1={bodyY+12} x2="55" y2={bodyY+32} color={C.skin}/><Line x1="116" y1={bodyY+12} x2="136" y2={bodyY+28} color={C.skin}/><line x1="28" y1="145" x2="155" y2="145" stroke="#C7D2DC" strokeWidth="2"/>
-</g>; };
-
-const Pull: React.FC<{stage:Stage; family:MotionFamily}> = ({stage,family}) => { const p=stageProgress(stage); const y=family==="pullup" ? 62-p*24 : 92-p*20; return <g>
-  {family==="pullup" ? <><line x1="30" y1="38" x2="170" y2="38" stroke={C.steel} strokeWidth="6"/><Head x={100} y={66-p*22}/><path d={`M84 ${79-p*22} Q100 ${70-p*22} 116 ${79-p*22} L119 ${112-p*22} Q100 ${121-p*22} 81 ${112-p*22} Z`} fill={C.shirt}/><Highlight x={88} y={82-p*22} w={24} h={10}/><Line x1={88} y1={82-p*22} x2={72} y2="45"/><Line x1={112} y1={82-p*22} x2={128} y2="45"/></> : <><Head x={74} y={72}/><path d="M83 82 Q104 72 124 84 L127 112 L82 112 Z" fill={C.shirt}/><Highlight x={92} y={87} w={22} h={10}/><Line x1={90} y1={88} x2={72+p*18} y2={y}/><Line x1={114} y1={88} x2={128-p*18} y2={y}/><Line x1={72+p*18} y1={y} x2={45+p*18} y2={y-15} color={C.steel}/><Line x1={128-p*18} y1={y} x2={155-p*18} y2={y-15} color={C.steel}/><line x1="145" y1="62" x2="175" y2="62" stroke={C.steel} strokeWidth="3"/></>}
-</g>; };
-
-const Core: React.FC<{stage:Stage; family:MotionFamily}> = ({stage,family}) => { const p=stageProgress(stage); const lift=family==="legRaise" ? p*18 : p*8; return <g>
-  <line x1="35" y1="150" x2="165" y2="150" stroke="#C7D2DC" strokeWidth="2"/>
-  <circle cx="55" cy={118-lift} r="8" fill={C.skin2}/><line x1="63" y1={122-lift} x2="112" y2={130-lift} stroke={C.shirt} strokeWidth="13" strokeLinecap="round"/><Highlight x="78" y={124-lift} w={24} h={10}/>
-  {family==="legRaise" ? <><Line x1="112" y1={130-lift} x2={135} y2={105-lift}/><Line x1="135" y1={105-lift} x2={153} y2={80-lift}/><Line x1="112" y1={130-lift} x2={145} y2={122-lift}/><Line x1="145" y1={122-lift} x2={165} y2={96-lift}/></> : <><Line x1="112" y1={130-lift} x2={145} y2={142-lift}/><Line x1="145" y1={142-lift} x2={160} y2={150}/><Line x1="72" y1={125-lift} x2={62} y2={150}/></>}
-</g>; };
-
-const Lower: React.FC<{stage:Stage; family:MotionFamily}> = ({stage,family}) => <g>
-  {family==="legPress" ? <><rect x="80" y="55" width="45" height="90" rx="8" fill="#DCE4EB"/><Head x={82} y={102}/><path d="M90 110 L124 116 L124 140 L92 140 Z" fill={C.shirt}/><Line x1={105} y1={116} x2={142} y2={82} color={C.skin}/><Line x1={105} y1={116} x2={142} y2={118} color={C.skin}/><rect x="136" y="70" width="10" height="62" rx="5" fill={C.steel}/><Highlight x="96" y="118" w={18} h={10}/></> : <Standing stage={stage} family={family}/>} 
-</g>;
-
-const FamilyPose: React.FC<{stage:Stage; family:MotionFamily}> = ({stage,family}) => {
-  if (["benchPress","inclinePress"].includes(family)) return <Bench stage={stage} family={family}/>;
-  if (["pushup","dip"].includes(family)) return <Pushup stage={stage}/>;
-  if (["pulldown","row","pullup"].includes(family)) return <Pull stage={stage} family={family}/>;
-  if (["core","plank","legRaise"].includes(family)) return <Core stage={stage} family={family}/>;
-  if (["squat","lunge","stepUp","hinge","legPress","calfRaise","gluteBridge","gluteKickback","carry","shoulderPress","lateralRaise","curl","triceps"].includes(family)) return <Lower stage={stage} family={family}/>;
-  return <Standing stage={stage} family={family}/>;
-};
-
-export const PremiumExerciseIllustrationV2: React.FC<{exerciseId?:string;exerciseName?:string;muscleGroup?:string}> = ({exerciseId,exerciseName="Exercice",muscleGroup="Mouvement"}) => {
-  const spec = useMemo<PremiumMotionSpec>(() => {
-    if (exerciseId && EXERCISE_MOTIONS[exerciseId]) return EXERCISE_MOTIONS[exerciseId];
-    return classifyExerciseMotion(exerciseId, exerciseName, muscleGroup);
-  }, [exerciseId, exerciseName, muscleGroup]);
-  const labels = ["POSITION DE DÉPART","MOUVEMENT","POSITION FINALE","RETOUR"];
-  return <div className="w-full h-full rounded-2xl overflow-hidden border border-[#D5DEE7] bg-[#F7FAFD]">
-    <svg viewBox="0 0 720 430" className="w-full h-full" role="img" aria-label={`${spec.label}: départ, mouvement, position finale, retour`}>
-      <rect width="720" height="430" fill={C.bg}/>
-      <text x="24" y="34" fill={C.navy} fontSize="22" fontWeight="900">{spec.label}</text>
-      <text x="696" y="34" textAnchor="end" fill={C.muscle} fontSize="12" fontWeight="900">{spec.muscle}</text>
-      {[0,1,2,3].map((stage) => { const x=12+stage*174; return <g key={stage} transform={`translate(${x} 52)`}>
-        <rect x="4" y="4" width="166" height="280" rx="16" fill={C.white} stroke={C.line}/>
-        <text x="87" y="26" textAnchor="middle" fill={stage===1||stage===2?C.orange:C.muted} fontSize="10" fontWeight="900">{labels[stage]}</text>
-        <g transform="translate(8 35) scale(1.05)"><FamilyPose stage={stage as Stage} family={spec.family}/></g>
-        {stage<3 && <text x="166" y="148" fill="#6C88A5" fontSize="25" fontWeight="900">→</text>}
-        <circle cx="87" cy="263" r="6" fill={stage===0?C.navy:C.steel}/>
-      </g>; })}
-      <line x1="42" y1="367" x2="678" y2="367" stroke="#9AAEC2" strokeWidth="4" strokeLinecap="round"/>
-      {[42,254,466,678].map((x,i)=><circle key={x} cx={x} cy="367" r="8" fill={i===0?C.navy:C.steel}/>)}
-      <circle cx="42" cy="367" r="12" fill={C.orange} opacity=".22"><animate attributeName="cx" values="42;254;466;678;466;254;42" dur="3.4s" repeatCount="indefinite"/></circle>
-      <text x="24" y="400" fill={C.muted} fontSize="11" fontWeight="700">Observe chaque phase : départ → mouvement → fin → retour. L'animation boucle pour faciliter l'exécution.</text>
-    </svg>
-  </div>;
-};
+export const PremiumExerciseIllustrationV2:React.FC<{exerciseId?:string;exerciseName?:string;muscleGroup?:string}> = ({exerciseId,exerciseName="Exercice",muscleGroup="Mouvement"}) => { const spec=useMemo<PremiumMotionSpec>(()=>exerciseId&&EXERCISE_MOTIONS[exerciseId]?EXERCISE_MOTIONS[exerciseId]:classifyExerciseMotion(exerciseId,exerciseName,muscleGroup),[exerciseId,exerciseName,muscleGroup]); const labels=["POSITION DE DÉPART","MOUVEMENT","POSITION FINALE","RETOUR"]; return <div className="w-full h-full rounded-2xl overflow-hidden border border-[#D5DEE7] bg-[#F7FAFD]"><svg viewBox="0 0 720 430" className="w-full h-full" role="img" aria-label={`${spec.label}: départ, mouvement, position finale, retour`}><rect width="720" height="430" fill={C.bg}/><text x="24" y="34" fill={C.navy} fontSize="22" fontWeight="900">{spec.label}</text><text x="696" y="34" textAnchor="end" fill={C.muscle} fontSize="12" fontWeight="900">{spec.muscle}</text>{[0,1,2,3].map(stage=>{const x=12+stage*174;return <g key={stage} transform={`translate(${x} 52)`}><rect x="4" y="4" width="166" height="280" rx="16" fill={C.white} stroke={C.line}/><text x="87" y="26" textAnchor="middle" fill={stage===1||stage===2?C.orange:C.muted} fontSize="10" fontWeight="900">{labels[stage]}</text><g transform="translate(8 35) scale(1.05)"><Pose stage={stage as Stage} family={spec.family}/></g>{stage<3&&<text x="160" y="148" fill="#6C88A5" fontSize="25" fontWeight="900">→</text>}<circle cx="87" cy="263" r="6" fill={stage===0?C.navy:C.steel}/></g>})}<line x1="42" y1="367" x2="678" y2="367" stroke="#9AAEC2" strokeWidth="4" strokeLinecap="round"/>{[42,254,466,678].map((x,i)=><circle key={x} cx={x} cy="367" r="8" fill={i===0?C.navy:C.steel}/>)}<circle cx="42" cy="367" r="12" fill={C.orange} opacity=".22"><animate attributeName="cx" values="42;254;466;678;466;254;42" dur="3.4s" repeatCount="indefinite"/></circle><text x="24" y="400" fill={C.muted} fontSize="11" fontWeight="700">Départ → mouvement → fin → retour. La boucle montre clairement ce que l'utilisateur doit reproduire.</text></svg></div>; };
