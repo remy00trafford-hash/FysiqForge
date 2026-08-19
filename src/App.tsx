@@ -27,7 +27,6 @@ export default function App() {
   const [showCoachChatModal, setShowCoachChatModal] = useState<boolean>(false);
   const [showFaqModal, setShowFaqModal] = useState<boolean>(false);
 
-  // User State Data
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
   const [userAnswers, setUserAnswers] = useState<UserAnswers>({
     objective: "Prise de masse (Hypertrophie)",
@@ -41,15 +40,10 @@ export default function App() {
     healthConsent: true
   });
 
-  // Current Generated Training Plan
   const [generatedPlan, setGeneratedPlan] = useState<TrainingPlan | null>(null);
   const [generationFailed, setGenerationFailed] = useState(false);
   const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<UserAnswers | null>(null);
 
-  // Restauration automatique de session : on ne restaure qu'un plan provenant du schéma
-  // actuel ET contenant réellement au moins 20 exercices sur le premier jour.
-  // Cela évite de réutiliser un ancien plan de développement (ex. 4 exercices/jour)
-  // alors que la nouvelle règle produit 20 exercices/jour.
   useEffect(() => {
     try {
       const saved = localStorage.getItem("fysiqforge_unlocked_session");
@@ -68,8 +62,6 @@ export default function App() {
           setIsUnlocked(true);
           setCurrentStep("FULL_PLAN");
         } else {
-          // Ancienne session (par ex. 4 exercices/jour) : on la retire pour forcer une
-          // nouvelle génération conforme à la règle actuelle.
           localStorage.removeItem("fysiqforge_unlocked_session");
         }
       }
@@ -77,37 +69,27 @@ export default function App() {
       localStorage.removeItem("fysiqforge_unlocked_session");
       console.warn("Impossible de restaurer la session précédente:", e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Step 1 -> Step 2 (Photo)
-  const handleStartFlow = () => {
-    setCurrentStep("PHOTO");
-  };
+  const handleStartFlow = () => setCurrentStep("PHOTO");
 
-  // Step 2 (Photo) -> Step 3 (Questionnaire)
   const handlePhotoSelected = (photoUrl: string) => {
     setSelectedPhotoUrl(photoUrl);
     setUserAnswers((prev) => ({ ...prev, photoUrl }));
     setCurrentStep("QUESTIONNAIRE");
   };
 
-  // Step 3 (Questionnaire) -> Step 4 (Aha Preview) — avec vrai écran de chargement,
-  // timeout réseau, et gestion d'erreur propre (plus de "ça bug et revient en arrière" silencieux).
   const handleQuestionnaireSubmit = async (answers: UserAnswers) => {
     setUserAnswers(answers);
     setLastSubmittedAnswers(answers);
     setGenerationFailed(false);
     setCurrentStep("GENERATING");
 
-    // Empêche un appel réseau bloqué indéfiniment (ex: serveur qui se réveille sur Render)
-    // de laisser l'utilisateur devant un écran figé sans aucune limite de temps.
     const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const res = await fetch(url, { ...options, signal: controller.signal });
-        return res;
+        return await fetch(url, { ...options, signal: controller.signal });
       } finally {
         clearTimeout(timeoutId);
       }
@@ -125,19 +107,13 @@ export default function App() {
 
     if (selectedPhotoUrl) {
       try {
-        const res = await fetchWithTimeout(
-          "/api/ai/analyze-photo",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ photoBase64: selectedPhotoUrl, questionnaire: answers })
-          },
-          20000
-        );
+        const res = await fetchWithTimeout("/api/ai/analyze-photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photoBase64: selectedPhotoUrl, questionnaire: answers })
+        }, 20000);
         const data = await res.json();
-        if (data.analysis) {
-          analysisData = data.analysis;
-        }
+        if (data.analysis) analysisData = data.analysis;
       } catch (err) {
         console.warn("Analyse photo indisponible, on continue avec les valeurs par défaut:", err);
       }
@@ -154,27 +130,26 @@ export default function App() {
   };
 
   const handleRetryGeneration = () => {
-    if (lastSubmittedAnswers) {
-      handleQuestionnaireSubmit(lastSubmittedAnswers);
-    } else {
-      setCurrentStep("QUESTIONNAIRE");
-    }
+    if (lastSubmittedAnswers) handleQuestionnaireSubmit(lastSubmittedAnswers);
+    else setCurrentStep("QUESTIONNAIRE");
   };
 
-  // Step 4 (Aha Preview) -> Step 5 (Paywall)
-  const handleOpenPaywall = () => {
-    setCurrentStep("PAYWALL");
-  };
+  const handleOpenPaywall = () => setCurrentStep("PAYWALL");
 
-  // Step 5 (Paywall Payment Success) -> Step 6 (Full Plan Portal)
   const handlePaymentSuccess = (email: string, tierId: PlanTierId, transaction: any) => {
     setUserEmail(email);
     setIsUnlocked(true);
 
     if (generatedPlan) {
-      const unlockedPlan = {
+      const unlockedPlan: TrainingPlan = {
         ...generatedPlan,
         tierId,
+        tierName: tierId === "essentiel" ? "Plan Essentiel" : tierId === "performance" ? "Plan Performance" : "Plan Élite / VIP",
+        // Music is an entitlement: Essential gets an explicit empty playlist so the UI
+        // cannot silently fall back to a public/default track.
+        playlist: tierId === "essentiel"
+          ? { ...generatedPlan.playlist, title: "Musique non incluse", tracks: [] }
+          : generatedPlan.playlist,
         unlockedAt: new Date().toLocaleTimeString()
       };
       setGeneratedPlan(unlockedPlan);
@@ -182,12 +157,7 @@ export default function App() {
       try {
         localStorage.setItem(
           "fysiqforge_unlocked_session",
-          JSON.stringify({
-            sessionVersion: PLAN_SESSION_VERSION,
-            email,
-            plan: unlockedPlan,
-            unlockedAt: Date.now()
-          })
+          JSON.stringify({ sessionVersion: PLAN_SESSION_VERSION, email, plan: unlockedPlan, unlockedAt: Date.now() })
         );
       } catch (e) {
         console.warn("Impossible de sauvegarder la session localement:", e);
@@ -215,47 +185,12 @@ export default function App() {
 
       <main>
         {currentStep === "LANDING" && <LandingHero onStartClick={handleStartFlow} language={language} />}
-
-        {currentStep === "PHOTO" && (
-          <PhotoUploadStep
-            onPhotoSelected={handlePhotoSelected}
-            onBack={() => setCurrentStep("LANDING")}
-            language={language}
-          />
-        )}
-
-        {currentStep === "QUESTIONNAIRE" && (
-          <QuestionnaireStep
-            initialAnswers={userAnswers}
-            onSubmitQuestionnaire={handleQuestionnaireSubmit}
-            onBack={() => setCurrentStep("PHOTO")}
-            language={language}
-          />
-        )}
-
-        {currentStep === "GENERATING" && (
-          <GeneratingPlanScreen hasError={generationFailed} onRetry={handleRetryGeneration} />
-        )}
-
-        {currentStep === "AHA_PREVIEW" && generatedPlan && (
-          <AhaPreviewStep plan={generatedPlan} onUnlockClick={handleOpenPaywall} language={language} />
-        )}
-
-        {currentStep === "PAYWALL" && (
-          <PaywallModal
-            onPaymentSuccess={handlePaymentSuccess}
-            onBack={() => setCurrentStep("AHA_PREVIEW")}
-            selectedCurrency={selectedCurrency}
-          />
-        )}
-
-        {currentStep === "FULL_PLAN" && generatedPlan && (
-          <FullPlanDashboard
-            plan={generatedPlan}
-            userEmail={userEmail || "membre.fysiq@gmail.com"}
-            language={language}
-          />
-        )}
+        {currentStep === "PHOTO" && <PhotoUploadStep onPhotoSelected={handlePhotoSelected} onBack={() => setCurrentStep("LANDING")} language={language} />}
+        {currentStep === "QUESTIONNAIRE" && <QuestionnaireStep initialAnswers={userAnswers} onSubmitQuestionnaire={handleQuestionnaireSubmit} onBack={() => setCurrentStep("PHOTO")} language={language} />}
+        {currentStep === "GENERATING" && <GeneratingPlanScreen hasError={generationFailed} onRetry={handleRetryGeneration} />}
+        {currentStep === "AHA_PREVIEW" && generatedPlan && <AhaPreviewStep plan={generatedPlan} onUnlockClick={handleOpenPaywall} language={language} />}
+        {currentStep === "PAYWALL" && <PaywallModal onPaymentSuccess={handlePaymentSuccess} onBack={() => setCurrentStep("AHA_PREVIEW")} selectedCurrency={selectedCurrency} />}
+        {currentStep === "FULL_PLAN" && generatedPlan && <FullPlanDashboard plan={generatedPlan} userEmail={userEmail || "membre.fysiq@gmail.com"} language={language} />}
       </main>
 
       <button
@@ -267,30 +202,21 @@ export default function App() {
           <Bot className="w-6 h-6 animate-bounce" />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[#0D0D11] animate-ping" />
         </div>
-        <span className="font-black text-xs uppercase tracking-wider hidden sm:inline">
-          {language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}
-        </span>
+        <span className="font-black text-xs uppercase tracking-wider hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span>
       </button>
 
       {showCoachChatModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="max-w-2xl w-full relative animate-in fade-in zoom-in-95 my-auto">
-            <button
-              onClick={() => setShowCoachChatModal(false)}
-              className="absolute -top-12 right-0 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl transition-colors cursor-pointer"
-            >
+            <button onClick={() => setShowCoachChatModal(false)} className="absolute -top-12 right-0 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl transition-colors cursor-pointer">
               <X className="w-5 h-5" />
             </button>
-            <AiCoachChat
-              userAnswers={userAnswers}
-              tierId={generatedPlan?.tierId || "performance"}
-            />
+            <AiCoachChat userAnswers={userAnswers} tierId={generatedPlan?.tierId || "performance"} />
           </div>
         </div>
       )}
 
       {showAdminModal && <AdminDashboard onClose={() => setShowAdminModal(false)} />}
-
       {showFaqModal && <FaqAndSupportModal onClose={() => setShowFaqModal(false)} />}
     </div>
   );
