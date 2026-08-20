@@ -19,8 +19,6 @@ import { Bot, X } from "lucide-react";
 const PLAN_SESSION_VERSION = 4;
 const SESSION_STORAGE_KEY = "fysiqforge_unlocked_session";
 
-/** Never persist a base64/photo payload in localStorage: it can exceed browser quotas and
- * unnecessarily retain a sensitive image. The photo remains available only for the active flow. */
 function getPersistablePlan(plan: TrainingPlan): TrainingPlan {
   const { photoUrl: _photoUrl, ...persistableAnswers } = plan.userAnswers || {};
   return { ...plan, userAnswers: persistableAnswers as UserAnswers };
@@ -36,7 +34,7 @@ export default function App() {
   const [showCoachChatModal, setShowCoachChatModal] = useState(false);
   const [showFaqModal, setShowFaqModal] = useState(false);
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
-  const [userAnswers, setUserAnswers] = useState<UserAnswers>({ objective: "Prise de masse (Hypertrophie)", targetZone: "Pectoraux & Triceps", frequency: "4 jours / sem", duration: "45-60 min", level: "Intermédiaire", musicStyle: "Afrobeats Gym Power", equipment: "Salle de sport équipée", constraints: "", healthConsent: true });
+  const [userAnswers, setUserAnswers] = useState<UserAnswers>({ objective: "Prise de masse (Hypertrophie)", targetZone: "Pectoraux & Triceps", frequency: "4 jours / sem", duration: "45-60 min", level: "Intermédiaire", musicStyle: "Afrobeats Gym Power", equipment: "Salle de sport équipée", constraints: "", healthConsent: false });
   const [generatedPlan, setGeneratedPlan] = useState<TrainingPlan | null>(null);
   const [generationFailed, setGenerationFailed] = useState(false);
   const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<UserAnswers | null>(null);
@@ -70,8 +68,6 @@ export default function App() {
 
   const handleQuestionnaireSubmit = async (answers: UserAnswers) => {
     setUserAnswers(answers); setLastSubmittedAnswers(answers); setGenerationFailed(false); setCurrentStep("GENERATING");
-    // If the AI service is unavailable, never present fabricated body-fat/symmetry numbers as
-    // if they were measured from the user's photo. The plan can still be generated from the questionnaire.
     let analysisData: any = {
       morphologyType: "Analyse visuelle indisponible",
       estimatedBodyFat: "Non estimé",
