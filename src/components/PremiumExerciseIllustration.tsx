@@ -12,6 +12,7 @@ export type MotionFamily =
   | "lateralRaise"
   | "curl"
   | "triceps"
+  | "lyingTriceps"
   | "squat"
   | "lunge"
   | "stepUp"
@@ -27,11 +28,7 @@ export type MotionFamily =
   | "carry"
   | "unknown";
 
-export interface PremiumMotionSpec {
-  family: MotionFamily;
-  label: string;
-  muscle: string;
-}
+export interface PremiumMotionSpec { family: MotionFamily; label: string; muscle: string; }
 
 export const EXERCISE_MOTIONS: Record<string, PremiumMotionSpec> = {
   bench_press: { family: "benchPress", label: "DÉVELOPPÉ COUCHÉ", muscle: "PECTORAUX" },
@@ -82,13 +79,14 @@ export const EXERCISE_MOTIONS: Record<string, PremiumMotionSpec> = {
   bw_jumping_jacks: { family: "cardio", label: "JUMPING JACKS", muscle: "CARDIO" },
   bw_burpee: { family: "cardio", label: "BURPEES", muscle: "FULL BODY / CARDIO" },
   bw_wall_sit: { family: "squat", label: "CHAISE MURALE", muscle: "QUADRICEPS" },
-  triceps_extension_barbell: { family: "triceps", label: "BARRE AU FRONT", muscle: "TRICEPS" },
+  triceps_extension_barbell: { family: "lyingTriceps", label: "BARRE AU FRONT", muscle: "TRICEPS" },
   farmer_carry: { family: "carry", label: "FARMER'S CARRY", muscle: "PRISE / TRAPÈZES" },
 };
 
 export function classifyExerciseMotion(exerciseId?: string, exerciseName = "", muscleGroup = ""): PremiumMotionSpec {
   if (exerciseId && EXERCISE_MOTIONS[exerciseId]) return EXERCISE_MOTIONS[exerciseId];
   const text = `${exerciseName} ${muscleGroup}`.toLowerCase();
+  if (/skull|barre au front|lying triceps|triceps extension.*bench|triceps.*couché|band skull/.test(text)) return { family: "lyingTriceps", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() || "TRICEPS" };
   if (/bench|développé couché|press.*barre|press.*halt/.test(text)) return { family: "benchPress", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/incliné|incline|écarté|fly|crossover/.test(text)) return { family: "inclinePress", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/pompe|push-up|push up|pike/.test(text)) return { family: "pushup", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
@@ -99,7 +97,7 @@ export function classifyExerciseMotion(exerciseId?: string, exerciseName = "", m
   if (/militaire|overhead|shoulder press|développé épaules/.test(text)) return { family: "shoulderPress", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/élévation latérale|lateral raise|oiseau|reverse fly/.test(text)) return { family: "lateralRaise", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/curl|biceps/.test(text)) return { family: "curl", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
-  if (/triceps|pushdown|barre au front|skull/.test(text)) return { family: "triceps", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
+  if (/triceps|pushdown/.test(text)) return { family: "triceps", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/presse à cuisses|leg press/.test(text)) return { family: "legPress", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/squat|wall sit|chaise murale|goblet/.test(text)) return { family: "squat", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
   if (/fente|lunge|split squat|pistol/.test(text)) return { family: "lunge", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() };
@@ -116,14 +114,7 @@ export function classifyExerciseMotion(exerciseId?: string, exerciseName = "", m
   return { family: "unknown", label: exerciseName.toUpperCase(), muscle: muscleGroup.toUpperCase() || "MOUVEMENT" };
 }
 
-// Legacy component kept for compatibility with any older import. The guided workout
-// uses ExercisePoseIllustration -> PremiumExerciseIllustrationV2 for the real premium renderer.
-export interface PremiumExerciseIllustrationProps {
-  exerciseId?: string;
-  exerciseName?: string;
-  muscleGroup?: string;
-  className?: string;
-}
+export interface PremiumExerciseIllustrationProps { exerciseId?: string; exerciseName?: string; muscleGroup?: string; className?: string; }
 
 export const PremiumExerciseIllustration: React.FC<PremiumExerciseIllustrationProps> = ({ exerciseId, exerciseName = "Exercice", muscleGroup = "Mouvement", className = "" }) => {
   const spec = classifyExerciseMotion(exerciseId, exerciseName, muscleGroup);
@@ -131,9 +122,7 @@ export const PremiumExerciseIllustration: React.FC<PremiumExerciseIllustrationPr
     <div className={`w-full h-full rounded-2xl border border-slate-200 bg-slate-50 p-4 ${className}`}>
       <div className="text-xs font-black uppercase tracking-wider text-slate-500">{spec.label}</div>
       <div className="mt-1 text-sm font-bold text-slate-800">{spec.muscle}</div>
-      <div className="mt-4 flex h-24 items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-500">
-        Animation guidée disponible dans le lecteur de séance.
-      </div>
+      <div className="mt-4 flex h-24 items-center justify-center rounded-xl bg-white text-xs font-semibold text-slate-500">Animation guidée disponible dans le lecteur de séance.</div>
     </div>
   );
 };
