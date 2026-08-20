@@ -11,6 +11,7 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { AiCoachChat } from "./components/AiCoachChat";
 import { FaqAndSupportModal } from "./components/FaqAndSupportModal";
 import { GeneratingPlanScreen } from "./components/GeneratingPlanScreen";
+import { GoogleAuthPanel } from "./components/GoogleAuthPanel";
 import { Language } from "./utils/translator";
 import { generateTrainingPlanAsync } from "./data/mockPlanGenerator";
 import { hydrateWeeklySchedules } from "./utils/weeklyScheduleHydrator";
@@ -25,10 +26,10 @@ function getPersistablePlan(plan: TrainingPlan): TrainingPlan {
 }
 
 function isKnownSyntheticPhotoAnalysis(analysis: any): boolean {
-  return analysis?.symmetryScore === 85 &&
+  return (analysis?.symmetryScore === 85 &&
     (analysis?.estimatedBodyFat === "13-16%" || analysis?.estimatedBodyFat === "18-22%") &&
     typeof analysis?.morphologyType === "string" &&
-    analysis.morphologyType.includes("Profil Athlétique") ||
+    analysis.morphologyType.includes("Profil Athlétique")) ||
     analysis?.morphologyType === "Silhouette Ciblée Tonification";
 }
 
@@ -56,19 +57,11 @@ export default function App() {
       const firstDay = Array.isArray(firstWeek) ? firstWeek[0] : null;
       const count = Array.isArray(firstDay?.exercises) ? firstDay.exercises.length : 0;
       if (parsed?.sessionVersion === PLAN_SESSION_VERSION && parsed?.plan && parsed?.email && count >= 20) {
-        setGeneratedPlan(parsed.plan);
-        setUserEmail(parsed.email);
-        setIsUnlocked(true);
+        setGeneratedPlan(parsed.plan); setUserEmail(parsed.email); setIsUnlocked(true);
         localStorage.setItem("fysiqforge_plan_tier", String(parsed.plan.tierId || "performance"));
         setCurrentStep("FULL_PLAN");
-      } else {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-        localStorage.removeItem("fysiqforge_plan_tier");
-      }
-    } catch {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      localStorage.removeItem("fysiqforge_plan_tier");
-    }
+      } else { localStorage.removeItem(SESSION_STORAGE_KEY); localStorage.removeItem("fysiqforge_plan_tier"); }
+    } catch { localStorage.removeItem(SESSION_STORAGE_KEY); localStorage.removeItem("fysiqforge_plan_tier"); }
   }, []);
 
   const handleStartFlow = () => setCurrentStep("PHOTO");
@@ -76,53 +69,29 @@ export default function App() {
 
   const handleQuestionnaireSubmit = async (answers: UserAnswers) => {
     setUserAnswers(answers); setLastSubmittedAnswers(answers); setGenerationFailed(false); setCurrentStep("GENERATING");
-    let analysisData: any = {
-      morphologyType: "Analyse visuelle indisponible",
-      estimatedBodyFat: "Non estimé",
-      symmetryScore: 0,
-      postureAnalysis: "L'analyse photo IA n'est pas disponible actuellement.",
-      priorityZones: [answers.targetZone],
-      recommendedFrequency: answers.frequency,
-      coachSummary: "Programme généré à partir de tes réponses. Une analyse photo IA sera ajoutée lorsqu'elle sera disponible."
-    };
+    let analysisData: any = { morphologyType: "Analyse visuelle indisponible", estimatedBodyFat: "Non estimé", symmetryScore: 0, postureAnalysis: "L'analyse photo IA n'est pas disponible actuellement.", priorityZones: [answers.targetZone], recommendedFrequency: answers.frequency, coachSummary: "Programme généré à partir de tes réponses. Une analyse photo IA sera ajoutée lorsqu'elle sera disponible." };
     if (selectedPhotoUrl) {
       try {
         const controller = new AbortController(); const timer = window.setTimeout(() => controller.abort(), 20000);
         const res = await fetch("/api/ai/analyze-photo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photoBase64: selectedPhotoUrl, questionnaire: answers }), signal: controller.signal });
-        window.clearTimeout(timer);
-        if (!res.ok) throw new Error(`Analyse photo HTTP ${res.status}`);
-        const data = await res.json();
+        window.clearTimeout(timer); if (!res.ok) throw new Error(`Analyse photo HTTP ${res.status}`); const data = await res.json();
         if (data.analysis && !isKnownSyntheticPhotoAnalysis(data.analysis)) analysisData = data.analysis;
       } catch (e) { console.warn("Analyse photo indisponible:", e); }
     }
-    try {
-      const rawPlan = await generateTrainingPlanAsync("performance", answers, analysisData);
-      const hydratedPlan = await hydrateWeeklySchedules(rawPlan, answers);
-      setGeneratedPlan(hydratedPlan); setCurrentStep("AHA_PREVIEW");
-    } catch (err) { console.error("Échec de génération:", err); setGenerationFailed(true); }
+    try { const rawPlan = await generateTrainingPlanAsync("performance", answers, analysisData); const hydratedPlan = await hydrateWeeklySchedules(rawPlan, answers); setGeneratedPlan(hydratedPlan); setCurrentStep("AHA_PREVIEW"); }
+    catch (err) { console.error("Échec de génération:", err); setGenerationFailed(true); }
   };
 
   const handleRetryGeneration = () => lastSubmittedAnswers ? handleQuestionnaireSubmit(lastSubmittedAnswers) : setCurrentStep("QUESTIONNAIRE");
   const handleOpenPaywall = () => setCurrentStep("PAYWALL");
 
   const handlePaymentSuccess = (email: string, tierId: PlanTierId) => {
-    setUserEmail(email); setIsUnlocked(true);
-    localStorage.setItem("fysiqforge_plan_tier", tierId);
+    setUserEmail(email); setIsUnlocked(true); localStorage.setItem("fysiqforge_plan_tier", tierId);
     if (generatedPlan) {
-      const unlockedPlan: TrainingPlan = {
-        ...generatedPlan,
-        tierId,
-        tierName: tierId === "essentiel" ? "Plan Essentiel" : tierId === "performance" ? "Plan Performance" : "Plan Élite / VIP",
-        playlist: tierId === "essentiel" ? { ...generatedPlan.playlist, title: "Musique non incluse", tracks: [] } : generatedPlan.playlist,
-        unlockedAt: new Date().toISOString()
-      };
+      const unlockedPlan: TrainingPlan = { ...generatedPlan, tierId, tierName: tierId === "essentiel" ? "Plan Essentiel" : tierId === "performance" ? "Plan Performance" : "Plan Élite / VIP", playlist: tierId === "essentiel" ? { ...generatedPlan.playlist, title: "Musique non incluse", tracks: [] } : generatedPlan.playlist, unlockedAt: new Date().toISOString() };
       setGeneratedPlan(unlockedPlan);
-      try {
-        const persistablePlan = getPersistablePlan(unlockedPlan);
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ sessionVersion: PLAN_SESSION_VERSION, email, plan: persistablePlan, unlockedAt: Date.now() }));
-      } catch (error) {
-        console.warn("Session locale non persistée : quota de stockage atteint.", error);
-      }
+      try { const persistablePlan = getPersistablePlan(unlockedPlan); localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ sessionVersion: PLAN_SESSION_VERSION, email, plan: persistablePlan, unlockedAt: Date.now() })); }
+      catch (error) { console.warn("Session locale non persistée : quota de stockage atteint.", error); }
     }
     setCurrentStep("FULL_PLAN");
   };
@@ -132,6 +101,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0D0D11] text-white font-sans antialiased selection:bg-[#FF5500] selection:text-white relative">
       <Header currentStep={currentStep} onNavigateStep={setCurrentStep} selectedCurrency={selectedCurrency} onCurrencyChange={setSelectedCurrency} language={language} onLanguageChange={setLanguage} userEmail={userEmail} onOpenAdmin={() => setShowAdminModal(true)} onOpenCoachChat={() => setShowCoachChatModal(true)} onOpenFaq={() => setShowFaqModal(true)} isUnlocked={isUnlocked} />
+      <div className="fixed top-3 right-3 z-40 max-w-[340px] hidden sm:block"><GoogleAuthPanel onAuthenticated={(user) => setUserEmail(user.email)} /></div>
       <main>
         {currentStep === "LANDING" && <LandingHero onStartClick={handleStartFlow} language={language} />}
         {currentStep === "PHOTO" && <PhotoUploadStep onPhotoSelected={handlePhotoSelected} onBack={() => setCurrentStep("LANDING")} language={language} />}
@@ -141,9 +111,7 @@ export default function App() {
         {currentStep === "PAYWALL" && <PaywallModal onPaymentSuccess={handlePaymentSuccess} onBack={() => setCurrentStep("AHA_PREVIEW")} selectedCurrency={selectedCurrency} />}
         {currentStep === "FULL_PLAN" && generatedPlan && <FullPlanDashboard plan={generatedPlan} userEmail={userEmail || "membre.fysiq@gmail.com"} language={language} />}
       </main>
-      {canUsePremiumCoach && (
-        <button onClick={() => setShowCoachChatModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer border border-white/20" title="Coach IA 24/7"><Bot className="w-6 h-6"/><span className="font-black text-xs uppercase hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span></button>
-      )}
+      {canUsePremiumCoach && <button onClick={() => setShowCoachChatModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer border border-white/20" title="Coach IA 24/7"><Bot className="w-6 h-6"/><span className="font-black text-xs uppercase hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span></button>}
       {showCoachChatModal && <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"><div className="max-w-2xl w-full relative"><button onClick={() => setShowCoachChatModal(false)} className="absolute -top-12 right-0 bg-white/10 text-white p-2 rounded-xl"><X className="w-5 h-5"/></button><AiCoachChat userAnswers={userAnswers} tierId={generatedPlan?.tierId || "performance"}/></div></div>}
       {showAdminModal && <AdminDashboard onClose={() => setShowAdminModal(false)} />}
       {showFaqModal && <FaqAndSupportModal onClose={() => setShowFaqModal(false)} />}
