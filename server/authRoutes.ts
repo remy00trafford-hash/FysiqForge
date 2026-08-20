@@ -18,3 +18,4 @@ app.post("/api/data/reminders",async(req,res)=>{const u=await user(req);if(!u)re
 app.get("/api/data/reminders",async(req,res)=>{const u=await user(req);if(!u)return res.status(401).json({error:"Authentification requise"});return res.json({reminders:await listReminders(u.id)})});
 app.get("/api/data/notifications",async(req,res)=>{const u=await user(req);if(!u)return res.status(401).json({error:"Authentification requise"});return res.json({notifications:await listNotifications(u.id)})});
 }
+// Persistence wiring workflow trigger marker.
