@@ -1,5 +1,5 @@
 import React from "react";
-import { PremiumExerciseIllustrationV3 } from "./PremiumExerciseIllustrationV3";
+import { ExerciseAnimationFrame } from "./ExerciseAnimationFrame";
 import { classifyExerciseMotion, EXERCISE_MOTIONS as PREMIUM_EXERCISE_MOTIONS } from "./PremiumExerciseIllustration";
 
 export type PoseCategory = "push" | "pull" | "squat" | "lunge" | "core" | "hinge" | "cardio" | "stretch" | "shoulder" | "arm";
@@ -18,10 +18,15 @@ export function classifyExercisePose(name: string, muscleGroup?: string): PoseCa
   return "stretch";
 }
 
-interface ExercisePoseIllustrationProps { pose: PoseCategory; exerciseId?: string; exerciseName?: string; muscleGroup?: string; }
+interface ExercisePoseIllustrationProps {
+  pose: PoseCategory;
+  exerciseId?: string;
+  exerciseName?: string;
+  muscleGroup?: string;
+}
 
 export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({ exerciseId, exerciseName = "Exercice", muscleGroup = "Mouvement" }) => (
-  <PremiumExerciseIllustrationV3 exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} />
+  <ExerciseAnimationFrame exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} />
 );
 
 export const EXERCISE_MOTIONS = PREMIUM_EXERCISE_MOTIONS;
