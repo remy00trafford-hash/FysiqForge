@@ -1,0 +1,49 @@
+name: Wire production persistence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/authRoutes.ts'
+      - 'server/persistentReminderWorker.ts'
+      - '.github/workflows/wire-production-persistence.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Patch server entrypoint
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server.ts')
+          s = p.read_text()
+          if 'server/authRoutes' not in s:
+              s = s.replace('import express from "express";', 'import express from "express";\nimport { registerAuthRoutes } from "./server/authRoutes";\nimport { initDb } from "./server/db";\nimport { startPersistentReminderWorker } from "./server/persistentReminderWorker";', 1)
+          marker = 'const app = express();'
+          injection = '''const app = express();\n\n// Production persistence: PostgreSQL is optional for local/demo mode but becomes\n// the source of truth when DATABASE_URL is configured on Render.\nregisterAuthRoutes(app);\nvoid initDb().then((enabled) => {\n  if (enabled) {\n    console.log("[FysiqForge] PostgreSQL persistence enabled");\n    startPersistentReminderWorker();\n  } else {\n    console.warn("[FysiqForge] DATABASE_URL absent: running in demo/in-memory mode");\n  }\n}).catch((error) => console.error("[FysiqForge] PostgreSQL init failed:", error));'''
+          if 'PostgreSQL persistence enabled' not in s:
+              if marker not in s:
+                  raise SystemExit('server.ts marker not found')
+              s = s.replace(marker, injection, 1)
+          p.write_text(s)
+          PY
+      - name: Build check
+        run: npm install --no-audit --no-fund && npm run lint && npm run build
+      - name: Commit wiring
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server.ts
+          git diff --cached --quiet || git commit -m 'chore: wire postgres auth and reminder worker'
+          git push
