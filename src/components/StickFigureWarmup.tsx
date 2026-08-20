@@ -1,7 +1,7 @@
 import React from "react";
 
 // Illustration vectorielle animée pour guider visuellement chaque mouvement
-a// d'échauffement sans dépendre d'une ressource externe.
+d'echauffement sans dépendre d'une ressource externe.
 
 type WarmupMove = "shoulders" | "jacks" | "chest";
 
