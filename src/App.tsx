@@ -16,7 +16,15 @@ import { generateTrainingPlanAsync } from "./data/mockPlanGenerator";
 import { hydrateWeeklySchedules } from "./utils/weeklyScheduleHydrator";
 import { Bot, X } from "lucide-react";
 
-const PLAN_SESSION_VERSION = 3;
+const PLAN_SESSION_VERSION = 4;
+const SESSION_STORAGE_KEY = "fysiqforge_unlocked_session";
+
+/** Never persist a base64/photo payload in localStorage: it can exceed browser quotas and
+ * unnecessarily retain a sensitive image. The photo remains available only for the active flow. */
+function getPersistablePlan(plan: TrainingPlan): TrainingPlan {
+  const { photoUrl: _photoUrl, ...persistableAnswers } = plan.userAnswers || {};
+  return { ...plan, userAnswers: persistableAnswers as UserAnswers };
+}
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>("LANDING");
@@ -35,7 +43,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("fysiqforge_unlocked_session");
+      const saved = localStorage.getItem(SESSION_STORAGE_KEY);
       if (!saved) return;
       const parsed = JSON.parse(saved);
       const firstWeek = Array.isArray(parsed?.plan?.weeklySchedules) ? parsed.plan.weeklySchedules[0] : parsed?.plan?.weekSchedule;
@@ -48,11 +56,11 @@ export default function App() {
         localStorage.setItem("fysiqforge_plan_tier", String(parsed.plan.tierId || "performance"));
         setCurrentStep("FULL_PLAN");
       } else {
-        localStorage.removeItem("fysiqforge_unlocked_session");
+        localStorage.removeItem(SESSION_STORAGE_KEY);
         localStorage.removeItem("fysiqforge_plan_tier");
       }
     } catch {
-      localStorage.removeItem("fysiqforge_unlocked_session");
+      localStorage.removeItem(SESSION_STORAGE_KEY);
       localStorage.removeItem("fysiqforge_plan_tier");
     }
   }, []);
@@ -62,12 +70,24 @@ export default function App() {
 
   const handleQuestionnaireSubmit = async (answers: UserAnswers) => {
     setUserAnswers(answers); setLastSubmittedAnswers(answers); setGenerationFailed(false); setCurrentStep("GENERATING");
-    let analysisData: any = { morphologyType: "Athlétique / Mesomorphe Ciblé", estimatedBodyFat: "14-16%", symmetryScore: 88, postureAnalysis: "Structure vertébrale stable.", priorityZones: [answers.targetZone, "Largeur de Dos", "Core / Sangle Abdominale"], recommendedFrequency: answers.frequency, coachSummary: `Analyse visuelle complétée pour ${answers.targetZone}.` };
+    // If the AI service is unavailable, never present fabricated body-fat/symmetry numbers as
+    // if they were measured from the user's photo. The plan can still be generated from the questionnaire.
+    let analysisData: any = {
+      morphologyType: "Analyse visuelle indisponible",
+      estimatedBodyFat: "Non estimé",
+      symmetryScore: 0,
+      postureAnalysis: "L'analyse photo IA n'est pas disponible actuellement.",
+      priorityZones: [answers.targetZone],
+      recommendedFrequency: answers.frequency,
+      coachSummary: "Programme généré à partir de tes réponses. Une analyse photo IA sera ajoutée lorsqu'elle sera disponible."
+    };
     if (selectedPhotoUrl) {
       try {
         const controller = new AbortController(); const timer = window.setTimeout(() => controller.abort(), 20000);
         const res = await fetch("/api/ai/analyze-photo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photoBase64: selectedPhotoUrl, questionnaire: answers }), signal: controller.signal });
-        window.clearTimeout(timer); const data = await res.json(); if (data.analysis) analysisData = data.analysis;
+        window.clearTimeout(timer);
+        if (!res.ok) throw new Error(`Analyse photo HTTP ${res.status}`);
+        const data = await res.json(); if (data.analysis) analysisData = data.analysis;
       } catch (e) { console.warn("Analyse photo indisponible:", e); }
     }
     try {
@@ -89,10 +109,15 @@ export default function App() {
         tierId,
         tierName: tierId === "essentiel" ? "Plan Essentiel" : tierId === "performance" ? "Plan Performance" : "Plan Élite / VIP",
         playlist: tierId === "essentiel" ? { ...generatedPlan.playlist, title: "Musique non incluse", tracks: [] } : generatedPlan.playlist,
-        unlockedAt: new Date().toLocaleTimeString()
+        unlockedAt: new Date().toISOString()
       };
       setGeneratedPlan(unlockedPlan);
-      try { localStorage.setItem("fysiqforge_unlocked_session", JSON.stringify({ sessionVersion: PLAN_SESSION_VERSION, email, plan: unlockedPlan, unlockedAt: Date.now() })); } catch { /* ignore */ }
+      try {
+        const persistablePlan = getPersistablePlan(unlockedPlan);
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ sessionVersion: PLAN_SESSION_VERSION, email, plan: persistablePlan, unlockedAt: Date.now() }));
+      } catch (error) {
+        console.warn("Session locale non persistée : quota de stockage atteint.", error);
+      }
     }
     setCurrentStep("FULL_PLAN");
   };
@@ -112,7 +137,7 @@ export default function App() {
         {currentStep === "FULL_PLAN" && generatedPlan && <FullPlanDashboard plan={generatedPlan} userEmail={userEmail || "membre.fysiq@gmail.com"} language={language} />}
       </main>
       {canUsePremiumCoach && (
-        <button onClick={() => setShowCoachChatModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer border border-white/20" title="Coach IA FysiqForge"><Bot className="w-6 h-6"/><span className="font-black text-xs uppercase hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span></button>
+        <button onClick={() => setShowCoachChatModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-[#FF5500] to-[#FF2200] hover:scale-110 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer border border-white/20" title="Coach IA 24/7"><Bot className="w-6 h-6"/><span className="font-black text-xs uppercase hidden sm:inline">{language === "FR" ? "Coach IA 24/7" : "24/7 AI Coach"}</span></button>
       )}
       {showCoachChatModal && <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"><div className="max-w-2xl w-full relative"><button onClick={() => setShowCoachChatModal(false)} className="absolute -top-12 right-0 bg-white/10 text-white p-2 rounded-xl"><X className="w-5 h-5"/></button><AiCoachChat userAnswers={userAnswers} tierId={generatedPlan?.tierId || "performance"}/></div></div>}
       {showAdminModal && <AdminDashboard onClose={() => setShowAdminModal(false)} />}
