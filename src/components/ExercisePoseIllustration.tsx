@@ -23,10 +23,11 @@ interface ExercisePoseIllustrationProps {
   exerciseId?: string;
   exerciseName?: string;
   muscleGroup?: string;
+  reps?: string;
 }
 
-export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({ exerciseId, exerciseName = "Exercice", muscleGroup = "Mouvement" }) => (
-  <ExerciseAnimationFrame exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} />
+export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({ exerciseId, exerciseName = "Exercice", muscleGroup = "Mouvement", reps }) => (
+  <ExerciseAnimationFrame exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} reps={reps} />
 );
 
 export const EXERCISE_MOTIONS = PREMIUM_EXERCISE_MOTIONS;
