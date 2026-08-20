@@ -24,6 +24,14 @@ function getPersistablePlan(plan: TrainingPlan): TrainingPlan {
   return { ...plan, userAnswers: persistableAnswers as UserAnswers };
 }
 
+function isKnownSyntheticPhotoAnalysis(analysis: any): boolean {
+  return analysis?.symmetryScore === 85 &&
+    (analysis?.estimatedBodyFat === "13-16%" || analysis?.estimatedBodyFat === "18-22%") &&
+    typeof analysis?.morphologyType === "string" &&
+    analysis.morphologyType.includes("Profil Athlétique") ||
+    analysis?.morphologyType === "Silhouette Ciblée Tonification";
+}
+
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>("LANDING");
   const [selectedCurrency, setSelectedCurrency] = useState<"FCFA" | "USD" | "EUR">("FCFA");
@@ -83,7 +91,8 @@ export default function App() {
         const res = await fetch("/api/ai/analyze-photo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ photoBase64: selectedPhotoUrl, questionnaire: answers }), signal: controller.signal });
         window.clearTimeout(timer);
         if (!res.ok) throw new Error(`Analyse photo HTTP ${res.status}`);
-        const data = await res.json(); if (data.analysis) analysisData = data.analysis;
+        const data = await res.json();
+        if (data.analysis && !isKnownSyntheticPhotoAnalysis(data.analysis)) analysisData = data.analysis;
       } catch (e) { console.warn("Analyse photo indisponible:", e); }
     }
     try {
