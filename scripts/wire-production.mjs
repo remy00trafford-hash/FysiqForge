@@ -14,3 +14,20 @@ if (!source.includes("Global PostgreSQL rate limit enabled")) {
   source = source.replace(marker, injection, 1);
 }
 fs.writeFileSync(file, source);
+
+// Wire exact-match video playback into the guided workout during production install.
+const playerFile = path.resolve("src/components/GuidedWorkoutPlayer.tsx");
+if (fs.existsSync(playerFile)) {
+  let player = fs.readFileSync(playerFile, "utf8");
+  if (!player.includes('from "./ExactExerciseVideo"')) {
+    player = player.replace(
+      'import { PremiumExerciseIllustrationV4 } from "./PremiumExerciseIllustrationV4";',
+      'import { PremiumExerciseIllustrationV4 } from "./PremiumExerciseIllustrationV4";\nimport { ExactExerciseVideo } from "./ExactExerciseVideo";',
+    );
+  }
+  player = player.replace(
+    /<PremiumExerciseIllustrationV4([\s\S]*?)\/>/,
+    '<ExactExerciseVideo exerciseId={currentExercise?.id} exerciseName={currentExercise?.name || "Exercice"} muscleGroup={currentExercise?.muscleGroup} reps={currentExercise?.reps} />',
+  );
+  fs.writeFileSync(playerFile, player);
+}
