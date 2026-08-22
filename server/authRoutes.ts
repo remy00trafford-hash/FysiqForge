@@ -126,4 +126,83 @@ export function registerAuthRoutes(app: Express) {
     const u = await user(req); if (!u) return res.status(401).json({ error: "Authentification requise" });
     return res.json({ notifications: await listNotifications(u.id) });
   });
+
+  // Compatibility endpoints: the dashboard historically used /api/reminders/*.
+  // Keep the public API stable while making the data persistent and session-bound.
+  app.post("/api/reminders/register-plan", async (req, res) => {
+    if (!(await limit(req, res, "reminders:register", 30, 60))) return;
+    const u = await user(req); if (!u) return res.status(401).json({ error: "Authentification requise" });
+    const schedule = Array.isArray(req.body?.weekSchedule) ? req.body.weekSchedule : [];
+    if (!schedule.length) return res.status(400).json({ error: "weekSchedule requis" });
+    const preferredTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(req.body?.preferredTime || "")) ? String(req.body.preferredTime) : "18:00";
+    const requestedOffset = Math.max(0, Number(req.body?.startOffsetDays) || 0);
+    const scheduleDays = Math.max(1, schedule.length);
+    // Legacy client passed (week-1) * number_of_sessions; normalize this to real weeks.
+    const startOffsetDays = requestedOffset === 0 ? 0 : Math.floor(requestedOffset / scheduleDays) * 7;
+    const created: string[] = [];
+    try {
+      for (let i = 0; i < schedule.length; i++) {
+        const day = schedule[i] || {};
+        const workoutId = `wk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        const scheduled = new Date();
+        scheduled.setDate(scheduled.getDate() + startOffsetDays + i);
+        const [hh, mm] = preferredTime.split(":").map(Number);
+        scheduled.setHours(hh, mm, 0, 0);
+        await saveReminder(u.id, {
+          workoutId,
+          scheduledAt: scheduled.toISOString(),
+          status: "pending"
+        });
+        created.push(workoutId);
+      }
+      return res.json({ workoutIds: created });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: "Enregistrement des rappels impossible" });
+    }
+  });
+
+  app.get("/api/reminders/notifications", async (req, res) => {
+    if (!(await limit(req, res, "reminders:notifications", 120, 60))) return;
+    const u = await user(req); if (!u) return res.status(401).json({ error: "Authentification requise" });
+    return res.json({ notifications: await listNotifications(u.id) });
+  });
+
+  app.post("/api/reminders/mark-read", async (req, res) => {
+    if (!(await limit(req, res, "reminders:mark-read", 120, 60))) return;
+    const u = await user(req); if (!u) return res.status(401).json({ error: "Authentification requise" });
+    const notificationId = String(req.body?.notificationId || "");
+    if (!notificationId) return res.status(400).json({ error: "notificationId requis" });
+    try {
+      const result = await db!.query("UPDATE notifications SET read=true WHERE id=$1 AND user_id=$2 RETURNING id", [notificationId, u.id]);
+      return result.rowCount ? res.json({ ok: true }) : res.status(404).json({ error: "Notification introuvable" });
+    } catch (e) { console.error(e); return res.status(500).json({ error: "Mise à jour impossible" }); }
+  });
+
+  app.post("/api/reminders/complete", async (req, res) => {
+    if (!(await limit(req, res, "reminders:complete", 60, 60))) return;
+    const u = await user(req); if (!u) return res.status(401).json({ error: "Authentification requise" });
+    const workoutId = String(req.body?.workoutId || "");
+    if (!workoutId) return res.status(400).json({ error: "workoutId requis" });
+    try {
+      const result = await db!.query("UPDATE reminders SET status='done', due_notified=true, missed_notified=true WHERE user_id=$1 AND workout_id=$2 RETURNING id", [u.id, workoutId]);
+      await db!.query("UPDATE notifications SET resolved=true WHERE user_id=$1 AND workout_id=$2", [u.id, workoutId]);
+      return result.rowCount ? res.json({ ok: true }) : res.status(404).json({ error: "Séance introuvable" });
+    } catch (e) { console.error(e); return res.status(500).json({ error: "Impossible de terminer la séance" }); }
+  });
+
+  app.post("/api/reminders/reschedule", async (req, res) => {
+    if (!(await limit(req, res, "reminders:reschedule", 60, 60))) return;
+    const u = await user(req); if (!u) return res.status(401).json({ error: "Authentification requise" });
+    const workoutId = String(req.body?.workoutId || "");
+    const newDateTimeISO = String(req.body?.newDateTimeISO || "");
+    const dt = new Date(newDateTimeISO);
+    if (!workoutId || Number.isNaN(dt.getTime())) return res.status(400).json({ error: "workoutId et newDateTimeISO valides sont requis" });
+    try {
+      const result = await db!.query("UPDATE reminders SET status='pending', scheduled_at=$3, due_notified=false, missed_notified=false WHERE user_id=$1 AND workout_id=$2 RETURNING id", [u.id, workoutId, dt.toISOString()]);
+      await db!.query("UPDATE notifications SET resolved=true WHERE user_id=$1 AND workout_id=$2", [u.id, workoutId]);
+      return result.rowCount ? res.json({ ok: true }) : res.status(404).json({ error: "Séance introuvable" });
+    } catch (e) { console.error(e); return res.status(500).json({ error: "Impossible de reprogrammer la séance" });
+    }
+  });
 }
