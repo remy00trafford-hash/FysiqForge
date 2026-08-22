@@ -11,15 +11,45 @@ html, body {
   background-color: #0D0D11;
   color: #ffffff;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: none;
+}
+
+body {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 #root {
   min-height: 100vh;
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   overflow-y: visible;
   display: flex;
   flex-direction: column;
+}
+
+main {
+  min-width: 0;
+  width: 100%;
+}
+
+button, a, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+/* Keep dropdowns and sticky UI usable on narrow Android screens. */
+@media (max-width: 639px) {
+  header {
+    padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
+  }
+
+  header > div {
+    gap: 0.5rem !important;
+  }
 }
 
 /* Custom modern scrollbar for dark mode */
@@ -70,3 +100,11 @@ html, body {
   animation: stageImageFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Safe-area helpers for Android/iOS browsers with display cutouts. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
