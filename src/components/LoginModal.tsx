@@ -1,0 +1,2 @@
+import React from "react"; import {X} from "lucide-react"; import {GoogleAuthPanel} from "./GoogleAuthPanel";
+export const LoginModal:React.FC<{onClose:()=>void;onAuthenticated:(u:any)=>void}>=({onClose,onAuthenticated})=><div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"><div className="relative w-full max-w-md"><button onClick={onClose} className="absolute -top-11 right-0 p-2 rounded-xl bg-white/10 text-white"><X className="w-5 h-5"/></button><GoogleAuthPanel onAuthenticated={onAuthenticated}/></div></div>;
