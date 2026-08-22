@@ -1,7 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Info, Repeat2, PlayCircle } from "lucide-react";
-import { PremiumExerciseIllustrationV6 } from "./PremiumExerciseIllustrationV6";
-import { classifyExerciseMotion, type MotionFamily } from "./PremiumExerciseIllustration";
+import React from "react";
+import { ExerciseMediaAnimation } from "./ExerciseMediaAnimation";
 
 interface ExerciseAnimationFrameProps {
   exerciseId?: string;
@@ -11,21 +9,18 @@ interface ExerciseAnimationFrameProps {
   videoSrc?: string;
 }
 
-const familyGuidance: Record<MotionFamily, string> = {
-  benchPress: "Descends la charge vers la poitrine, puis pousse jusqu'à la position de départ.", inclinePress: "Descends les haltères sous contrôle, puis pousse vers le haut sans perdre l'angle du banc.", pushup: "Garde le corps gainé, descends la poitrine, puis repousse le sol jusqu'à la position de départ.", dip: "Descends en contrôlant les coudes, puis pousse pour revenir bras tendus sans à-coup.", pulldown: "Tire les coudes vers le bas, amène la barre vers le haut de la poitrine, puis remonte sous contrôle.", row: "Tire les coudes vers l'arrière, rapproche les omoplates, puis laisse revenir la charge lentement.", pullup: "Monte la poitrine vers la barre, puis redescends de façon contrôlée jusqu'à la position de départ.", shoulderPress: "Pousse les charges au-dessus de la tête, puis redescends-les sous contrôle vers les épaules.", lateralRaise: "Élève les bras sur les côtés jusqu'à la hauteur des épaules, puis redescends lentement.", curl: "Garde les coudes stables, fléchis les bras pour rapprocher les charges des épaules, puis redescends.", triceps: "Garde les coudes près du corps, tends les avant-bras, puis reviens lentement à la position de départ.", lyingTriceps: "Allongé, fléchis les coudes pour rapprocher la charge du front, puis tends les bras sans déplacer les coudes.", squat: "Descends en contrôlant les genoux et les hanches, puis pousse dans le sol pour remonter.", lunge: "Fais descendre le bassin entre les jambes, garde le genou stable, puis pousse pour revenir.", stepUp: "Pose un pied sur la plateforme, pousse dans ce pied pour monter, puis redescends avec contrôle.", hinge: "Repousse les hanches vers l'arrière en gardant le dos neutre, puis serre les fessiers pour remonter.", legPress: "Fléchis les genoux en contrôlant la descente, puis pousse le plateau sans verrouiller brutalement les genoux.", calfRaise: "Monte sur la pointe des pieds, marque une courte contraction, puis redescends complètement.", gluteBridge: "Pousse les hanches vers le haut en serrant les fessiers, puis redescends sous contrôle.", gluteKickback: "Garde le bassin stable, pousse la jambe vers l'arrière, puis ramène-la sans cambrer le dos.", core: "Effectue le mouvement sans élan et garde le tronc contrôlé pendant toute la répétition.", plank: "Garde le corps aligné, les abdos contractés et respire sans laisser tomber le bassin.", legRaise: "Lève les jambes avec le contrôle des abdominaux, puis redescends sans balancer le corps.", cardio: "Réalise le mouvement en continu en gardant une amplitude confortable et un rythme régulier.", carry: "Garde le buste droit, serre les charges et avance avec des pas contrôlés.", unknown: "Suis le mouvement animé et réalise chaque répétition lentement et sous contrôle.",
-};
-const phaseLabels: Record<MotionFamily, string> = {
-  benchPress: "DESCENTE → POUSSÉE", inclinePress: "DESCENTE → POUSSÉE", pushup: "DESCENTE → POUSSÉE", dip: "DESCENTE → REMONTÉE", pulldown: "TIRAGE → RETOUR", row: "TIRAGE → RETOUR", pullup: "MONTÉE → DESCENTE", shoulderPress: "POUSSÉE → DESCENTE", lateralRaise: "MONTÉE → DESCENTE", curl: "FLEXION → EXTENSION", triceps: "EXTENSION → RETOUR", lyingTriceps: "DESCENTE → EXTENSION", squat: "DESCENTE → REMONTÉE", lunge: "DESCENTE → POUSSÉE", stepUp: "MONTER → REDESCENDRE", hinge: "HANCHES ARRIÈRE → REMONTÉE", legPress: "DESCENTE → POUSSÉE", calfRaise: "MONTÉE → DESCENTE", gluteBridge: "HANCHES HAUT → BAS", gluteKickback: "EXTENSION → RETOUR", core: "CONTRACTION → RETOUR", plank: "TENUE ISOMÉTRIQUE", legRaise: "MONTÉE → DESCENTE", cardio: "MOUVEMENT CONTINU", carry: "MARCHE CONTRÔLÉE", unknown: "MOUVEMENT CONTRÔLÉ",
-};
-
 export const ExerciseAnimationFrame: React.FC<ExerciseAnimationFrameProps> = ({ exerciseId, exerciseName = "Exercice", muscleGroup = "Mouvement", reps, videoSrc }) => {
-  const spec = useMemo(() => classifyExerciseMotion(exerciseId, exerciseName, muscleGroup), [exerciseId, exerciseName, muscleGroup]);
-  const guidance = familyGuidance[spec.family];
-  const phase = phaseLabels[spec.family];
-  const [videoFailed, setVideoFailed] = useState(false);
-  return <div className="relative w-full h-full min-h-[280px] overflow-hidden rounded-2xl bg-[#070B10]">
-    {videoSrc && !videoFailed ? <div className="absolute inset-0 bg-white"><video src={videoSrc} autoPlay muted loop playsInline preload="metadata" onError={() => setVideoFailed(true)} className="h-full w-full object-contain" aria-label={`Démonstration vidéo en boucle : ${exerciseName}`} /><div className="absolute right-3 bottom-3 flex items-center gap-1.5 rounded-lg bg-black/65 px-2 py-1.5 text-[9px] font-black uppercase tracking-wider text-white backdrop-blur-sm"><PlayCircle className="h-3.5 w-3.5 text-[#FF6A00]" /> Démo en boucle</div></div> : <PremiumExerciseIllustrationV6 exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} />}
-    <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2"><div className="rounded-xl border border-white/15 bg-black/55 px-3 py-2 shadow-sm backdrop-blur-sm"><div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-white"><Repeat2 className="h-3.5 w-3.5 text-[#FF6A00]" />{phase}</div></div>{reps && <div className="rounded-xl border border-[#FF6A00]/20 bg-black/55 px-3 py-2 text-right shadow-sm backdrop-blur-sm"><div className="text-[9px] font-black uppercase tracking-wider text-white/60">Objectif</div><div className="text-xs font-black text-white">{reps}</div></div>}</div>
-    <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-xl border border-white/15 bg-black/65 px-3 py-2.5 shadow-sm backdrop-blur-sm"><div className="flex items-start gap-2"><Info className="mt-0.5 h-4 w-4 shrink-0 text-[#FF6A00]" /><div><p className="text-[10px] font-black uppercase tracking-wider text-white">Comment faire</p><p className="mt-0.5 text-[11px] font-semibold leading-4 text-white/75">{guidance}</p></div></div></div>
-  </div>;
+  if (videoSrc) {
+    return (
+      <div className="relative h-full min-h-[280px] w-full overflow-hidden rounded-2xl bg-[#070B10]">
+        <video src={videoSrc} autoPlay muted loop playsInline preload="metadata" className="h-full w-full object-contain" aria-label={`Démonstration vidéo : ${exerciseName}`} />
+        <div className="pointer-events-none absolute inset-x-3 top-3 flex items-center justify-between gap-2">
+          <div className="rounded-xl border border-white/10 bg-black/65 px-3 py-2 text-xs font-black text-white backdrop-blur-md">Démonstration — {exerciseName}</div>
+          {reps && <div className="rounded-xl border border-white/10 bg-black/65 px-3 py-2 text-xs font-black text-white backdrop-blur-md">{reps}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return <ExerciseMediaAnimation exerciseId={exerciseId} exerciseName={exerciseName} muscleGroup={muscleGroup} reps={reps} />;
 };
