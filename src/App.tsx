@@ -48,6 +48,19 @@ export default function App() {
   const [generationFailed, setGenerationFailed] = useState(false);
   const [lastSubmittedAnswers, setLastSubmittedAnswers] = useState<UserAnswers | null>(null);
 
+  // Every app-level step change starts at the top. This fixes the Android/desktop
+  // case where the next screen inherits the previous scroll position.
+  useEffect(() => {
+    const scrollToTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    scrollToTop();
+    const frame = window.requestAnimationFrame(scrollToTop);
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentStep]);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(SESSION_STORAGE_KEY);
