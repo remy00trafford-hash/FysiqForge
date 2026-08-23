@@ -17,15 +17,25 @@ const WARMUP_LABEL: Record<WarmupMove, string> = {
   chest: "Ouverture de poitrine"
 };
 
+// Exact ExerciseDB/ExerciseGymGifsDB jumping-jack asset (Jack Jump Male, id 3224).
+const EXACT_WARMUP_GIFS: Partial<Record<WarmupMove, string>> = {
+  jacks: "https://d205bpvrqc9yn1.cloudfront.net/3224.gif"
+};
+
 export const StickFigureWarmup: React.FC<StickFigureWarmupProps> = ({ move }) => {
-  const [gif, setGif] = useState<string | null>(null);
+  const [gif, setGif] = useState<string | null>(EXACT_WARMUP_GIFS[move] || null);
   const [failed, setFailed] = useState(false);
   const fallback = exercisePlaceholderUrl(WARMUP_LABEL[move]);
 
   useEffect(() => {
     let alive = true;
-    setGif(null);
     setFailed(false);
+    const exact = EXACT_WARMUP_GIFS[move];
+    if (exact) {
+      setGif(exact);
+      return () => { alive = false; };
+    }
+    setGif(null);
     findExerciseGif(undefined, WARMUP_SEARCH[move])
       .then((result) => { if (alive && result) setGif(result.gifUrl); })
       .catch(() => undefined);
