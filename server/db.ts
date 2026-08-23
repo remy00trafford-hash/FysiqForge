@@ -67,6 +67,13 @@ export async function deleteSession(token: string) {
   return withContext(null, async (client) => { await client.query("DELETE FROM sessions WHERE token_hash=$1", [hashToken(token)]); });
 }
 
+export async function deleteUserAccount(userId: string) {
+  return withContext(userId, async (client) => {
+    const result = await client.query("DELETE FROM users WHERE id=$1 RETURNING id", [userId]);
+    return result.rowCount || 0;
+  });
+}
+
 export async function consumeRateLimit(key: string, limit: number, windowSeconds: number) {
   if (!db) return { allowed: true, remaining: limit };
   return withContext(null, async (client) => {
