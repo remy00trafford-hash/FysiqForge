@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { WorkoutDay, ExerciseItem } from "../types";
 import { StickFigureWarmup } from "./StickFigureWarmup";
 import { ExerciseAnimationFrame } from "./ExerciseAnimationFrame";
-import { X, Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Plus, Minus, CheckCircle2, Award, Dumbbell } from "lucide-react";
+import { X, Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Plus, Minus, CheckCircle2, Award, Dumbbell, Timer } from "lucide-react";
 import { Language, UI_LABELS, translateExerciseName, translateMuscleGroup } from "../utils/translator";
 import { speakText, stopSpeech } from "../utils/speechUtils";
 
@@ -10,163 +10,99 @@ interface GuidedWorkoutPlayerProps { workoutDay: WorkoutDay; initialExerciseIdx?
 type WorkoutPhase = "WARMUP" | "EXERCISE" | "REST" | "COMPLETE";
 interface WarmupStep { name: string; durationSec: number; description: string; stickFigureMove: "shoulders" | "jacks" | "chest"; }
 const WARMUP_STEPS: WarmupStep[] = [
-  { name: "Rotations Épaules & Coudes", durationSec: 30, description: "Fais tourner tes épaules vers l'avant puis vers l'arrière, bras détendus.", stickFigureMove: "shoulders" },
-  { name: "Jumping Jacks", durationSec: 30, description: "Sauts écartés bras et jambes pour élever progressivement le rythme cardiaque.", stickFigureMove: "jacks" },
-  { name: "Ouverture de Cage Thoracique", durationSec: 30, description: "Ouvre et ferme la cage thoracique avec un mouvement dynamique et contrôlé.", stickFigureMove: "chest" }
+  { name: "Rotations Épaules & Coudes", durationSec: 30, description: "Fais tourner tes épaules vers l'avant puis vers l'arrière, bras détendus. Enchaîne avec des rotations de coudes pour lubrifier les articulations.", stickFigureMove: "shoulders" },
+  { name: "Jumping Jacks", durationSec: 30, description: "Sauts écartés bras/jambes pour élever ton rythme cardiaque et préparer tout le corps à l'effort.", stickFigureMove: "jacks" },
+  { name: "Ouverture de Cage Thoracique", durationSec: 30, description: "Étirement dynamique de la poitrine et du haut du dos : bras écartés, ouvre et ferme la cage thoracique en respirant profondément.", stickFigureMove: "chest" }
 ];
 
-function estimateExerciseDurationSec(repsLabel?: string) {
-  if (!repsLabel) return 40;
-  const lower = repsLabel.toLowerCase();
-  const sec = lower.match(/(\d+)\s*sec/); if (sec) return Math.max(10, Math.min(120, Number(sec[1])));
-  const min = lower.match(/(\d+)\s*min/); if (min) return Math.max(15, Math.min(180, Number(min[1]) * 60));
-  const reps = lower.match(/\d+/); if (reps) return Math.max(15, Math.min(75, Math.round(Number(reps[0]) * 2)));
-  return 40;
-}
-
 export const GuidedWorkoutPlayer: React.FC<GuidedWorkoutPlayerProps> = ({ workoutDay, initialExerciseIdx = 0, language, onClose, onWorkoutCompleted, onCheckEquipment }) => {
-  const t = UI_LABELS[language];
-  const exercises = workoutDay.exercises || [];
-  const [phase, setPhase] = useState<WorkoutPhase>("WARMUP");
-  const [currentExIdx, setCurrentExIdx] = useState(Math.min(Math.max(0, initialExerciseIdx), Math.max(0, exercises.length - 1)));
-  const [currentSet, setCurrentSet] = useState(1);
-  const [currentWarmupIdx, setCurrentWarmupIdx] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(WARMUP_STEPS[0].durationSec);
-  const [isRunning, setIsRunning] = useState(true);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [countdownValue, setCountdownValue] = useState<number | null>(null);
-  const countdownTimerRef = useRef<number | null>(null);
+  const t = UI_LABELS[language]; const exercises = workoutDay.exercises || [];
+  const [phase, setPhase] = useState<WorkoutPhase>("WARMUP"); const [currentExIdx, setCurrentExIdx] = useState(initialExerciseIdx); const [currentSet, setCurrentSet] = useState(1); const [currentWarmupIdx, setCurrentWarmupIdx] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(WARMUP_STEPS[0].durationSec); const [isRunning, setIsRunning] = useState(true); const [isMuted, setIsMuted] = useState(false); const [isVoiceActive, setIsVoiceActive] = useState(false);
+  interface CoachQueueItem { text: string; isEquipmentCheck?: boolean; }
+  const [coachMessage, setCoachMessage] = useState<string | null>(null); const coachQueueRef = useRef<CoachQueueItem[]>([]); const coachTimeoutRef = useRef<number | null>(null); const firedCoachEventsRef = useRef<Set<string>>(new Set()); const [isCoachSpeaking, setIsCoachSpeaking] = useState(false); const [countdownValue, setCountdownValue] = useState<number | null>(null); const [awaitingEquipmentConfirm, setAwaitingEquipmentConfirm] = useState(false);
   const timerAnchorRef = useRef<number | null>(null);
-  const pausedRemainingRef = useRef<number>(timeLeft);
+  const pausedRemainingRef = useRef<number>(WARMUP_STEPS[0].durationSec);
   const autoAdvanceLockRef = useRef(false);
-  const [coachMessage, setCoachMessage] = useState<string | null>(null);
-  const [awaitingEquipmentConfirm, setAwaitingEquipmentConfirm] = useState(false);
+  const currentExercise: ExerciseItem | undefined = exercises[currentExIdx];
 
-  const currentExercise = exercises[currentExIdx] as ExerciseItem | undefined;
+  const playBeep = (freq = 800, duration = 0.15) => { if (isMuted || typeof window === "undefined") return; try { const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = "sine"; osc.frequency.value = freq; gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + duration); } catch {} };
 
-  const clearCountdown = () => {
-    if (countdownTimerRef.current !== null) { window.clearTimeout(countdownTimerRef.current); countdownTimerRef.current = null; }
-    setCountdownValue(null);
+  const clearCountdown = () => { if (coachTimeoutRef.current !== null) { window.clearTimeout(coachTimeoutRef.current); coachTimeoutRef.current = null; } };
+  const [countdownTimerRef] = useState<{ current: number | null }>({ current: null });
+  const stopCountdown = () => { if (countdownTimerRef.current !== null) { window.clearTimeout(countdownTimerRef.current); countdownTimerRef.current = null; } setCountdownValue(null); };
+
+  const runPreStartCountdown = () => {
+    stopCountdown();
+    let n = 3; setCountdownValue(n); playBeep(500, 0.12);
+    const step = () => { n -= 1; if (n <= 0) { setCountdownValue(null); countdownTimerRef.current = null; playBeep(900, 0.2); return; } setCountdownValue(n); playBeep(500, 0.12); countdownTimerRef.current = window.setTimeout(step, 700); };
+    countdownTimerRef.current = window.setTimeout(step, 700);
   };
 
-  const playBeep = (freq = 800, duration = 0.12) => {
-    if (isMuted || typeof window === "undefined") return;
-    try {
-      const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
-      if (!Ctx) return;
-      const ctx = new Ctx(); const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.frequency.value = freq; gain.gain.setValueAtTime(0.16, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-      osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + duration);
-    } catch {}
-  };
+  const handleAfterCoachSpeech = (wasEquipmentCheck: boolean) => { if (coachQueueRef.current.length > 0) { showNextCoachMessage(); return; } setIsCoachSpeaking(false); if (wasEquipmentCheck) setAwaitingEquipmentConfirm(true); else { setCoachMessage(null); runPreStartCountdown(); } };
+  const showNextCoachMessage = () => { const next = coachQueueRef.current.shift(); if (!next) { setCoachMessage(null); setIsCoachSpeaking(false); runPreStartCountdown(); return; } setCoachMessage(next.text); setIsCoachSpeaking(true); const isLast = coachQueueRef.current.length === 0; const spoke = speakText(next.text, () => setIsCoachSpeaking(true), () => handleAfterCoachSpeech(!!next.isEquipmentCheck && isLast), () => window.setTimeout(() => handleAfterCoachSpeech(!!next.isEquipmentCheck && isLast), 3000)); if (!spoke) window.setTimeout(() => handleAfterCoachSpeech(!!next.isEquipmentCheck && isLast), 3200); };
+  const triggerCoachMessage = (text: string, eventKey?: string, isEquipmentCheck?: boolean) => { if (eventKey) { if (firedCoachEventsRef.current.has(eventKey)) return; firedCoachEventsRef.current.add(eventKey); } coachQueueRef.current.push({ text, isEquipmentCheck }); if (!isCoachSpeaking && coachMessage === null && countdownValue === null && !awaitingEquipmentConfirm) showNextCoachMessage(); };
+  const handleEquipmentConfirmYes = () => { setAwaitingEquipmentConfirm(false); setCoachMessage(null); runPreStartCountdown(); };
+  const handleEquipmentConfirmNo = () => { setAwaitingEquipmentConfirm(false); setCoachMessage(null); if (onCheckEquipment && currentExercise) onCheckEquipment(currentExercise); runPreStartCountdown(); };
+  useEffect(() => { triggerCoachMessage("C'est parti ! On commence en douceur avec l'échauffement, respire bien et prépare ton corps.", "intro"); }, []);
+  useEffect(() => { if (phase === "EXERCISE" && currentSet === 1) triggerCoachMessage(`Prochain mouvement : ${exercises[currentExIdx]?.name || "cet exercice"}. As-tu tout le matériel nécessaire ?`, `equipment-check-${currentExIdx}`, true); if (phase === "EXERCISE" && currentExIdx === 0 && currentSet === 1) triggerCoachMessage("Premier exercice ! Concentre-toi sur la technique avant la charge.", "first-exercise"); if (phase === "EXERCISE" && exercises.length > 2 && currentExIdx === Math.floor(exercises.length / 2)) triggerCoachMessage("Tu es à la moitié de ta séance, garde ce rythme, c'est du solide.", "midpoint"); if (phase === "EXERCISE" && currentExIdx === exercises.length - 1) triggerCoachMessage("Dernier exercice de la séance, donne tout ce qu'il te reste !", "last-exercise"); if (phase === "REST" && currentExIdx === exercises.length - 1) triggerCoachMessage("Récupère bien, respire profondément, la séance touche à sa fin.", "final-rest"); if (phase === "COMPLETE") triggerCoachMessage("Séance forgée avec succès ! Ton corps te remerciera demain.", "complete"); }, [phase, currentExIdx]);
+  useEffect(() => () => { if (coachTimeoutRef.current) window.clearTimeout(coachTimeoutRef.current); stopCountdown(); stopSpeech(); }, []);
 
-  const startCountdown = () => {
-    clearCountdown();
-    let n = 3;
-    setCountdownValue(n); playBeep(500);
-    const tick = () => {
-      n -= 1;
-      if (n <= 0) { setCountdownValue(null); countdownTimerRef.current = null; playBeep(900, 0.18); return; }
-      setCountdownValue(n); playBeep(500); countdownTimerRef.current = window.setTimeout(tick, 700);
-    };
-    countdownTimerRef.current = window.setTimeout(tick, 700);
+  const estimateExerciseDurationSec = (repsLabel?: string): number => { if (!repsLabel) return 45; const lower = repsLabel.toLowerCase(); const secMatch = lower.match(/(\d+)\s*sec/); if (secMatch) return Math.max(10, parseInt(secMatch[1], 10)); const minMatch = lower.match(/(\d+)\s*min/); if (minMatch) return Math.max(10, parseInt(minMatch[1], 10) * 60); const repsMatch = lower.match(/(\d+)/); if (repsMatch) return Math.min(90, Math.max(15, Math.round(parseInt(repsMatch[1], 10) * 2.3))); return 45; };
+  const getCurrentRemaining = () => {
+    if (!isRunning || timerAnchorRef.current === null) return Math.max(0, pausedRemainingRef.current);
+    const elapsed = (performance.now() - timerAnchorRef.current) / 1000;
+    return Math.max(0, pausedRemainingRef.current - Math.floor(elapsed));
   };
-
-  const setPhaseTimer = (nextPhase: WorkoutPhase, exIdx = currentExIdx, setNum = currentSet, warmupIdx = currentWarmupIdx) => {
-    let next = 30;
-    if (nextPhase === "WARMUP") next = WARMUP_STEPS[warmupIdx]?.durationSec || 30;
-    else if (nextPhase === "EXERCISE") next = estimateExerciseDurationSec(exercises[exIdx]?.reps);
-    else if (nextPhase === "REST") next = exercises[exIdx]?.restSeconds || 40;
-    setPhase(nextPhase); if (nextPhase !== "COMPLETE") setTimeLeft(next); pausedRemainingRef.current = next; timerAnchorRef.current = isRunning ? performance.now() : null; autoAdvanceLockRef.current = false;
+  const setupPhaseTimer = (newPhase: WorkoutPhase, exIdx: number, _setNum: number, warmupIdx = 0) => {
+    let next = 30; if (newPhase === "WARMUP") next = WARMUP_STEPS[warmupIdx]?.durationSec || 30; else if (newPhase === "EXERCISE") next = estimateExerciseDurationSec(exercises[exIdx]?.reps); else if (newPhase === "REST") next = exercises[exIdx]?.restSeconds || 45;
+    setPhase(newPhase); if (newPhase !== "COMPLETE") { pausedRemainingRef.current = next; setTimeLeft(next); timerAnchorRef.current = isRunning ? performance.now() : null; } else timerAnchorRef.current = null; autoAdvanceLockRef.current = false;
   };
-
-  const advance = () => {
-    if (autoAdvanceLockRef.current) return; autoAdvanceLockRef.current = true; clearCountdown(); stopSpeech();
-    if (phase === "WARMUP") {
-      if (currentWarmupIdx < WARMUP_STEPS.length - 1) { const next = currentWarmupIdx + 1; setCurrentWarmupIdx(next); setPhaseTimer("WARMUP", 0, 1, next); }
-      else { setCurrentExIdx(Math.max(0, Math.min(currentExIdx, exercises.length - 1))); setCurrentSet(1); setPhaseTimer("EXERCISE", currentExIdx, 1); }
-    } else if (phase === "EXERCISE") {
-      setPhaseTimer("REST", currentExIdx, currentSet);
-    } else if (phase === "REST") {
-      const ex = exercises[currentExIdx]; const totalSets = ex?.sets || 3;
-      if (currentSet < totalSets) { const s = currentSet + 1; setCurrentSet(s); setPhaseTimer("EXERCISE", currentExIdx, s); }
-      else if (currentExIdx < exercises.length - 1) { const e = currentExIdx + 1; setCurrentExIdx(e); setCurrentSet(1); setPhaseTimer("EXERCISE", e, 1); }
-      else { setPhase("COMPLETE"); setIsRunning(false); timerAnchorRef.current = null; playBeep(1100, 0.35); onWorkoutCompleted(); }
-    }
+  const handleAutoAdvancePhase = () => {
+    if (autoAdvanceLockRef.current) return; autoAdvanceLockRef.current = true; stopSpeech(); stopCountdown();
+    if (phase === "WARMUP") { if (currentWarmupIdx < WARMUP_STEPS.length - 1) { const next = currentWarmupIdx + 1; setCurrentWarmupIdx(next); setupPhaseTimer("WARMUP", 0, 1, next); } else { setPhase("EXERCISE"); setCurrentExIdx(0); setCurrentSet(1); setupPhaseTimer("EXERCISE", 0, 1); } }
+    else if (phase === "EXERCISE") setupPhaseTimer("REST", currentExIdx, currentSet);
+    else if (phase === "REST") { const ex = exercises[currentExIdx]; const totalSets = ex?.sets || 3; if (currentSet < totalSets) { const nextSet = currentSet + 1; setCurrentSet(nextSet); setupPhaseTimer("EXERCISE", currentExIdx, nextSet); } else if (currentExIdx < exercises.length - 1) { const nextExIdx = currentExIdx + 1; setCurrentExIdx(nextExIdx); setCurrentSet(1); setupPhaseTimer("EXERCISE", nextExIdx, 1); } else { setPhase("COMPLETE"); setIsRunning(false); pausedRemainingRef.current = 0; timerAnchorRef.current = null; playBeep(1000, 0.5); } }
   };
-
-  const goPrevious = () => {
-    clearCountdown(); stopSpeech(); autoAdvanceLockRef.current = false;
-    if (phase === "REST") setPhaseTimer("EXERCISE", currentExIdx, currentSet);
-    else if (phase === "EXERCISE") {
-      if (currentSet > 1) { const s = currentSet - 1; setCurrentSet(s); setPhaseTimer("EXERCISE", currentExIdx, s); }
-      else if (currentExIdx > 0) { const e = currentExIdx - 1; const prev = exercises[e]; setCurrentExIdx(e); setCurrentSet(prev?.sets || 3); setPhaseTimer("EXERCISE", e, prev?.sets || 3); }
-      else { setCurrentWarmupIdx(WARMUP_STEPS.length - 1); setPhaseTimer("WARMUP", 0, 1, WARMUP_STEPS.length - 1); }
-    } else if (phase === "WARMUP" && currentWarmupIdx > 0) {
-      const w = currentWarmupIdx - 1; setCurrentWarmupIdx(w); setPhaseTimer("WARMUP", 0, 1, w);
-    }
-  };
+  const handleSkipNext = () => handleAutoAdvancePhase();
+  const handleGoPrevious = () => { stopSpeech(); stopCountdown(); autoAdvanceLockRef.current = false; if (phase === "REST") setupPhaseTimer("EXERCISE", currentExIdx, currentSet); else if (phase === "EXERCISE") { if (currentSet > 1) { const s = currentSet - 1; setCurrentSet(s); setupPhaseTimer("EXERCISE", currentExIdx, s); } else if (currentExIdx > 0) { const prevExIdx = currentExIdx - 1; const prevEx = exercises[prevExIdx]; setCurrentExIdx(prevExIdx); setCurrentSet(prevEx?.sets || 3); setupPhaseTimer("EXERCISE", prevExIdx, prevEx?.sets || 3); } else { setPhase("WARMUP"); setCurrentWarmupIdx(WARMUP_STEPS.length - 1); setupPhaseTimer("WARMUP", 0, 1, WARMUP_STEPS.length - 1); } } else if (phase === "WARMUP" && currentWarmupIdx > 0) { const prevWarmupIdx = currentWarmupIdx - 1; setCurrentWarmupIdx(prevWarmupIdx); setupPhaseTimer("WARMUP", 0, 1, prevWarmupIdx); } };
 
   useEffect(() => {
-    return () => { clearCountdown(); stopSpeech(); };
-  }, []);
-
-  useEffect(() => {
-    if (!isRunning || phase === "COMPLETE" || countdownValue !== null || awaitingEquipmentConfirm) { timerAnchorRef.current = null; return; }
-    timerAnchorRef.current = performance.now();
-    const id = window.setInterval(() => {
-      const anchor = timerAnchorRef.current; if (anchor === null) return;
-      const elapsed = Math.floor((performance.now() - anchor) / 1000);
-      const remaining = Math.max(0, pausedRemainingRef.current - elapsed);
-      setTimeLeft(remaining);
-      if (remaining <= 0) { timerAnchorRef.current = null; advance(); }
-    }, 200);
+    if (!isRunning || phase === "COMPLETE" || countdownValue !== null || awaitingEquipmentConfirm || isCoachSpeaking) { timerAnchorRef.current = null; return; }
+    if (timerAnchorRef.current === null) timerAnchorRef.current = performance.now();
+    const id = window.setInterval(() => { const remaining = getCurrentRemaining(); setTimeLeft(remaining); if (remaining <= 0) { timerAnchorRef.current = null; handleAutoAdvancePhase(); } }, 200);
     return () => window.clearInterval(id);
-  }, [isRunning, phase, countdownValue, awaitingEquipmentConfirm]);
+  }, [isRunning, phase, countdownValue, awaitingEquipmentConfirm, isCoachSpeaking]);
 
-  useEffect(() => { pausedRemainingRef.current = timeLeft; }, [timeLeft]);
-
-  const toggleRunning = () => {
-    if (phase === "COMPLETE") return;
-    if (isRunning) { pausedRemainingRef.current = timeLeft; timerAnchorRef.current = null; setIsRunning(false); }
-    else { timerAnchorRef.current = performance.now(); setIsRunning(true); }
-  };
-  const adjustTime = (delta: number) => { const next = Math.max(0, Math.min(599, timeLeft + delta)); pausedRemainingRef.current = next; setTimeLeft(next); if (isRunning) timerAnchorRef.current = performance.now(); if (next === 0) advance(); };
-  const toggleVoice = () => {
-    if (!isVoiceActive) {
-      if (!currentExercise || phase !== "EXERCISE") return;
-      const text = `${translateExerciseName(currentExercise.name, language)}. ${t.sets}: ${currentSet} sur ${currentExercise.sets}. À faire : ${currentExercise.reps}. ${currentExercise.tips}`;
-      setIsVoiceActive(true); speakText(text, () => setIsVoiceActive(true), () => setIsVoiceActive(false), () => setIsVoiceActive(false));
-    } else { stopSpeech(); setIsVoiceActive(false); }
-  };
-
-  useEffect(() => {
-    if (phase === "EXERCISE" && currentExercise && currentSet === 1) {
-      setCoachMessage(`Prochain mouvement : ${translateExerciseName(currentExercise.name, language)}.`);
-    } else if (phase === "COMPLETE") setCoachMessage("Séance terminée. Bravo !"); else setCoachMessage(null);
-  }, [phase, currentExIdx, currentSet, language]);
-
-  const formatTime = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-  const progressTotal = Math.max(1, exercises.length * 2 + 1);
-  const progressStep = phase === "WARMUP" ? 0 : currentExIdx * 2 + (phase === "REST" ? 2 : 1);
-  const progress = Math.min(100, Math.round((progressStep / progressTotal) * 100));
+  const toggleRunning = () => { if (phase === "COMPLETE") return; if (isRunning) { const remaining = getCurrentRemaining(); pausedRemainingRef.current = remaining; setTimeLeft(remaining); timerAnchorRef.current = null; setIsRunning(false); } else { pausedRemainingRef.current = Math.max(0, timeLeft); timerAnchorRef.current = performance.now(); setIsRunning(true); } };
+  const handleAdjustTime = (deltaSeconds: number) => { if (phase === "COMPLETE") return; const current = getCurrentRemaining(); const next = Math.min(599, Math.max(0, current + deltaSeconds)); pausedRemainingRef.current = next; setTimeLeft(next); timerAnchorRef.current = isRunning && next > 0 ? performance.now() : null; if (next === 0 && isRunning) handleAutoAdvancePhase(); };
+  const handleToggleVoice = () => { if (isVoiceActive) { stopSpeech(); setIsVoiceActive(false); } else if (currentExercise && phase === "EXERCISE") { const textToSpeak = `${translateExerciseName(currentExercise.name, language)}. ${t.sets}: ${currentSet} sur ${currentExercise.sets}. À faire : ${currentExercise.reps}. ${currentExercise.tips}`; setIsVoiceActive(true); speakText(textToSpeak, () => setIsVoiceActive(true), () => setIsVoiceActive(false), () => setIsVoiceActive(false)); } };
+  const formatTime = (secs: number) => `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`;
+  const totalStepsInWorkout = Math.max(1, exercises.length * 2 + 1); const completedSteps = phase === "WARMUP" ? 0 : currentExIdx * 2 + (phase === "REST" ? 2 : 1); const progressPercent = Math.min(100, Math.round((completedSteps / totalStepsInWorkout) * 100));
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0A0A0E] text-white flex flex-col h-screen overflow-hidden select-none">
-      {countdownValue !== null && <div className="absolute inset-0 z-[80] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"><p className="text-sm font-bold uppercase tracking-widest text-[#FF8A3D]">C'est parti dans</p><div className="text-[120px] font-black">{countdownValue}</div></div>}
-      {coachMessage && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] w-[92%] max-w-md"><div className="bg-gradient-to-r from-[#FF5500] to-[#FF8A00] rounded-2xl px-4 py-3 shadow-2xl"><p className="text-sm font-bold text-black">{coachMessage}</p>{phase === "EXERCISE" && currentSet === 1 && currentExercise && onCheckEquipment && <div className="mt-2"><button onClick={() => onCheckEquipment(currentExercise)} className="text-[11px] bg-white/90 text-black rounded-lg px-3 py-2 font-bold">Vérifier le matériel</button></div>}</div></div>}
-      <header className="bg-[#121218]/95 border-b border-white/10 px-4 py-3 flex items-center justify-between shrink-0"><div className="flex items-center gap-3 min-w-0"><div className="w-9 h-9 rounded-xl bg-[#FF5500] flex items-center justify-center"><Dumbbell className="w-5 h-5"/></div><div className="min-w-0"><div className="text-[10px] text-[#FF5500] font-black uppercase tracking-wider truncate">{workoutDay.dayName} — {t.startWorkout}</div><h2 className="font-extrabold uppercase truncate max-w-[260px] sm:max-w-md">{workoutDay.title}</h2></div></div><button onClick={onClose} className="p-2 rounded-xl bg-white/5 border border-white/10"><X className="w-5 h-5"/></button></header>
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6"><div className="max-w-5xl mx-auto space-y-4">
-        <div className="bg-[#15151C] border border-white/10 rounded-2xl p-4"><div className="flex justify-between items-center gap-3"><div><div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">{phase === "WARMUP" ? "Échauffement" : phase === "EXERCISE" ? "Exercice" : phase === "REST" ? "Repos" : "Terminé"}</div><div className="text-5xl sm:text-6xl font-black tabular-nums tracking-tight">{formatTime(timeLeft)}</div></div><div className="flex items-center gap-2 flex-wrap justify-end"><button onClick={() => adjustTime(-15)} className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-black flex items-center gap-1"><Minus className="w-4 h-4"/>15s</button><button onClick={toggleRunning} className="px-4 py-2 rounded-xl bg-[#FF5500] text-xs font-black flex items-center gap-1">{isRunning?<Pause className="w-4 h-4"/>:<Play className="w-4 h-4"/>}{isRunning?"Pause":"Reprendre"}</button><button onClick={() => adjustTime(15)} className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-black flex items-center gap-1"><Plus className="w-4 h-4"/>15s</button></div></div><div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-[#FF5500] transition-[width] duration-300" style={{width:`${progress}%`}}/></div></div>
-
-        <div className="bg-[#15151C] border border-white/10 rounded-3xl p-4 sm:p-6"><div className="flex items-center justify-between gap-3 mb-4"><div><div className="text-xs text-[#FF5500] font-black uppercase">{phase === "WARMUP" ? WARMUP_STEPS[currentWarmupIdx]?.name : currentExercise ? translateExerciseName(currentExercise.name, language) : "Séance"}</div>{phase === "EXERCISE" && currentExercise && <div className="text-xs text-emerald-400 font-semibold mt-1">{translateMuscleGroup(currentExercise.muscleGroup, language)} · Série {currentSet}/{currentExercise.sets}</div>}</div><div className="flex gap-2"><button onClick={() => setIsMuted(v=>!v)} className="p-2 rounded-xl bg-white/5 border border-white/10" title="Son">{isMuted?<VolumeX className="w-4 h-4"/>:<Volume2 className="w-4 h-4"/>}</button>{phase === "EXERCISE" && <button onClick={toggleVoice} className={`p-2 rounded-xl border ${isVoiceActive?"bg-[#FF5500] border-[#FF5500]":"bg-white/5 border-white/10"}`} title="Coach vocal"><Volume2 className="w-4 h-4"/></button>}</div></div>
-          <div className="aspect-video max-h-[58vh] rounded-2xl overflow-hidden bg-[#070B10]">{phase === "WARMUP" ? <StickFigureWarmup move={WARMUP_STEPS[currentWarmupIdx].stickFigureMove}/> : phase === "EXERCISE" && currentExercise ? <ExerciseAnimationFrame exercise={currentExercise}/> : <div className="h-full flex items-center justify-center text-center p-6"><div><div className="text-4xl mb-3">{phase === "REST" ? "🧘" : "🏆"}</div><p className="text-lg font-black">{phase === "REST" ? "Récupère et respire" : "Séance forgée"}</p></div></div>}</div>
+    <div className="fixed inset-0 z-50 bg-[#0A0A0E] text-white flex flex-col h-screen overflow-hidden select-none animate-in fade-in zoom-in-95">
+      {coachMessage && <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] max-w-md w-[92%]"><div className="bg-gradient-to-r from-[#FF5500] to-[#FF8A00] rounded-2xl px-4 py-3 shadow-2xl shadow-[#FF5500]/30"><div className="flex items-start gap-3"><div className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center shrink-0 mt-0.5"><span className="text-sm">🤖</span></div><div className="flex-1 min-w-0"><p className="text-[10px] font-black uppercase tracking-wider text-black/70 mb-0.5">Coach IA FysiqForge</p><p className="text-sm font-bold text-black leading-snug">{coachMessage}</p></div></div>{awaitingEquipmentConfirm && <div className="flex gap-2 mt-3"><button onClick={()=>{setAwaitingEquipmentConfirm(false);setCoachMessage(null);runPreStartCountdown()}} className="flex-1 bg-black text-white font-bold text-xs py-2.5 rounded-xl">✅ J'ai tout, c'est bon</button><button onClick={()=>{setAwaitingEquipmentConfirm(false);setCoachMessage(null);if(onCheckEquipment&&currentExercise)onCheckEquipment(currentExercise);runPreStartCountdown()}} className="flex-1 bg-white text-black font-bold text-xs py-2.5 rounded-xl">❌ Il me manque un truc</button></div>}</div></div>}
+      {countdownValue !== null && <div className="absolute inset-0 z-[70] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4"><p className="text-sm font-bold uppercase tracking-widest text-[#FF8A3D]">C'est parti dans</p><div key={countdownValue} className="text-[120px] font-black text-white leading-none">{countdownValue}</div></div>}
+      <header className="bg-[#121218]/90 border-b border-white/10 px-4 py-3 flex items-center justify-between shrink-0"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-[#FF5500] flex items-center justify-center font-bold text-white"><Dumbbell className="w-5 h-5" /></div><div><div className="flex items-center gap-2"><span className="text-xs font-black text-[#FF5500] uppercase tracking-wider">{workoutDay.dayName} — {t.startWorkout}</span><span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold px-2 py-0.5 rounded border border-emerald-500/30">AUTO-CHRONO ACTIVE</span></div><h2 className="text-sm sm:text-base font-extrabold uppercase truncate max-w-[280px] sm:max-w-md">{workoutDay.title}</h2></div></div><div className="flex items-center gap-2"><button onClick={() => setIsMuted(!isMuted)} className={`p-2 rounded-xl text-xs font-bold border ${isMuted ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-white/5 text-gray-300 border-white/10"}`}>{isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-[#FF5500]" />}</button><button onClick={() => { stopSpeech(); stopCountdown(); onClose(); }} className="p-2 bg-white/10 rounded-xl"><X className="w-5 h-5" /></button></div></header>
+      <div className="w-full bg-white/5 h-1.5 shrink-0"><div className="bg-gradient-to-r from-[#FF5500] to-emerald-400 h-full transition-all duration-500" style={{ width: `${progressPercent}%` }} /></div>
+      <main className="flex-1 flex flex-col lg:flex-row items-center justify-center p-4 sm:p-6 gap-6 overflow-y-auto">
+        <div className="w-full lg:w-1/2 max-w-xl flex flex-col items-center text-center space-y-4">
+          <div className="flex items-center gap-2">{phase === "WARMUP" && <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-black px-3.5 py-1.5 rounded-full uppercase">🔥 {t.warmupPhase}</span>}{phase === "EXERCISE" && <span className="bg-[#FF5500]/20 text-[#FF5500] border border-[#FF5500]/30 text-xs font-black px-3.5 py-1.5 rounded-full uppercase"><Dumbbell className="w-4 h-4 inline" /> {t.exercisePhase} — EXERCICE {currentExIdx + 1} / {exercises.length}</span>}{phase === "REST" && <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-xs font-black px-3.5 py-1.5 rounded-full uppercase"><Timer className="w-4 h-4 inline" /> {t.restPhase}</span>}{phase === "COMPLETE" && <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-black px-3.5 py-1.5 rounded-full uppercase"><Award className="w-4 h-4 inline" /> {t.workoutComplete}</span>}</div>
+          <div className="relative w-full h-64 sm:h-80 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl bg-black group">{phase === "WARMUP" ? <StickFigureWarmup key={`stick-${currentWarmupIdx}`} move={WARMUP_STEPS[currentWarmupIdx]?.stickFigureMove || "shoulders"} /> : phase === "REST" ? <div className="w-full h-full flex items-center justify-center bg-[#1A120C]"><span className="text-6xl animate-pulse">😮‍💨</span></div> : <ExerciseAnimationFrame key={`premium-${currentExIdx}-${currentSet}`} exerciseId={currentExercise?.id} exerciseName={currentExercise?.name} muscleGroup={currentExercise?.muscleGroup} reps={currentExercise?.reps} />}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none" />
+            {phase !== "COMPLETE" && <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between"><div className="bg-black/80 backdrop-blur-md border border-white/20 px-4 py-2 rounded-2xl flex items-center gap-3"><div className="w-3 h-3 rounded-full bg-[#FF5500]" /><span className="font-mono text-3xl sm:text-4xl font-black tracking-widest text-white">{formatTime(timeLeft)}</span></div>{phase === "EXERCISE" && currentExercise && <div className="bg-[#FF5500] text-white px-3.5 py-2 rounded-2xl font-black text-xs sm:text-sm shadow-xl">{t.sets} {currentSet} / {currentExercise.sets}</div>}</div>}
+          </div>
+          <div className="flex items-center gap-3 pt-2"><button aria-label="Retirer 15 secondes" onClick={() => handleAdjustTime(-15)} className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 flex items-center gap-1 cursor-pointer"><Minus className="w-3.5 h-3.5" /> 15s</button><button onClick={toggleRunning} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-xl cursor-pointer ${isRunning ? "bg-amber-500 text-black" : "bg-[#FF5500] text-white"}`}>{isRunning ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}<span>{isRunning ? t.pause : t.resume}</span></button><button aria-label="Ajouter 15 secondes" onClick={() => handleAdjustTime(15)} className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 flex items-center gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> 15s</button></div>
         </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 justify-between"><button onClick={goPrevious} disabled={phase === "WARMUP" && currentWarmupIdx === 0} className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"><SkipBack className="w-4 h-4"/>Précédent</button><button onClick={advance} disabled={phase === "COMPLETE"} className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#FF5500] to-[#FF2200] text-sm font-black flex items-center justify-center gap-2 disabled:opacity-40"><SkipForward className="w-4 h-4"/>Suivant</button></div>
-        {phase === "COMPLETE" && <div className="flex items-center justify-center"><button onClick={onWorkoutCompleted} className="px-6 py-3 rounded-xl bg-emerald-600 text-white font-black flex items-center gap-2"><CheckCircle2 className="w-5 h-5"/>Terminer la séance</button></div>}
-      </div></main>
+        <div className="w-full lg:w-1/2 max-w-xl bg-[#16161E] border border-white/10 rounded-3xl p-6 space-y-5 shadow-2xl">
+          {phase === "WARMUP" && <div className="space-y-4"><div><span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Échauffement — Mouvement {currentWarmupIdx + 1} sur {WARMUP_STEPS.length}</span><h3 className="text-2xl font-black uppercase text-white font-display">{WARMUP_STEPS[currentWarmupIdx]?.name}</h3></div><p className="text-sm text-gray-300 leading-relaxed bg-[#121218] p-4 rounded-2xl border border-white/5">{WARMUP_STEPS[currentWarmupIdx]?.description}</p></div>}
+          {phase === "EXERCISE" && currentExercise && <div className="space-y-4"><div><span className="text-xs font-bold text-[#FF5500] uppercase">Exercice {currentExIdx + 1} sur {exercises.length}</span><h3 className="text-2xl font-black uppercase text-white font-display">{translateExerciseName(currentExercise.name, language)}</h3><p className="text-xs text-gray-400 mt-1">{translateMuscleGroup(currentExercise.muscleGroup, language)}</p></div><div className="grid grid-cols-3 gap-3"><div className="bg-[#121218] p-3 rounded-xl border border-white/5"><p className="text-[10px] text-gray-500 uppercase">Séries</p><p className="text-lg font-black">{currentExercise.sets}</p></div><div className="bg-[#121218] p-3 rounded-xl border border-white/5"><p className="text-[10px] text-gray-500 uppercase">À faire</p><p className="text-lg font-black text-[#FF8A3D]">{currentExercise.reps}</p></div><div className="bg-[#121218] p-3 rounded-xl border border-white/5"><p className="text-[10px] text-gray-500 uppercase">Maintenant</p><p className="text-lg font-black">Série {currentSet}/{currentExercise.sets}</p></div></div><div className="bg-[#121218] p-4 rounded-2xl border border-[#FF5500]/20"><p className="text-[10px] font-black text-[#FF5500] uppercase mb-1">🎯 Ce que tu fais maintenant</p><p className="text-sm font-bold text-white">Fais <span className="text-[#FF8A3D]">{currentExercise.reps}</span>, puis arrête-toi. Le chrono est seulement un repère de temps.</p></div><div className="bg-[#121218] p-4 rounded-2xl border border-white/5"><p className="text-[10px] font-black text-[#FF5500] uppercase mb-1">Comment faire</p><p className="text-xs text-gray-300 leading-relaxed">{currentExercise.tips}</p></div><button onClick={handleToggleVoice} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-2.5 text-xs font-bold">{isVoiceActive ? "🔊 Arrêter le coach vocal" : "🔊 Écouter les instructions"}</button></div>}
+          {phase === "REST" && <div className="space-y-4 text-center"><span className="text-xs font-bold text-blue-400 uppercase">Récupération</span><h3 className="text-2xl font-black uppercase">Respire et récupère</h3><p className="text-sm text-gray-400">Prépare-toi pour la prochaine série ou le prochain exercice.</p></div>}
+          {phase === "COMPLETE" && <div className="space-y-5 text-center"><div className="w-16 h-16 mx-auto rounded-full bg-emerald-500/20 flex items-center justify-center"><CheckCircle2 className="w-8 h-8 text-emerald-400" /></div><h3 className="text-2xl font-black uppercase">Séance terminée</h3><p className="text-sm text-gray-400">Excellent travail. Ton bilan peut maintenant être enregistré.</p><button onClick={() => { onWorkoutCompleted(); onClose(); }} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-wider">Enregistrer le bilan ✓</button></div>}
+          {phase !== "COMPLETE" && <div className="flex items-center justify-between pt-4 border-t border-white/10"><button onClick={handleGoPrevious} className="px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-xl text-xs font-bold flex items-center gap-1.5"><SkipBack className="w-4 h-4" />{t.previous}</button><button onClick={handleSkipNext} className="px-5 py-2.5 bg-[#FF5500] hover:bg-[#FF6611] text-white rounded-xl text-xs font-black flex items-center gap-1.5"><span>{t.skip}</span><SkipForward className="w-4 h-4" /></button></div>}
+        </div>
+      </main>
     </div>
   );
 };
