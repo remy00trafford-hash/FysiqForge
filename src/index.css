@@ -12,24 +12,17 @@ html, body {
   color: #ffffff;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: none;
+  font-family: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-synthesis: none;
 }
 
 body { padding-top: env(safe-area-inset-top, 0px); }
-
-#root {
-  min-height: 100vh;
-  width: 100%;
-  overflow-x: clip;
-  overflow-y: visible;
-  display: flex;
-  flex-direction: column;
-}
-
+#root { min-height: 100vh; width: 100%; overflow-x: clip; overflow-y: visible; display: flex; flex-direction: column; }
 main { min-width: 0; width: 100%; }
-button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; font: inherit; }
 button { touch-action: manipulation; }
+h1,h2,h3,h4,h5,h6 { font-family: "Aptos Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif; letter-spacing: -0.015em; }
 
-/* Responsive header: preserve the Options hit target on narrow Android screens. */
 @media (max-width: 639px) {
   header { padding-left: max(0.5rem, env(safe-area-inset-left, 0px)); padding-right: max(0.5rem, env(safe-area-inset-right, 0px)); }
   header > div { gap: 0.35rem !important; }
@@ -39,37 +32,19 @@ button { touch-action: manipulation; }
   header > div > div:last-child { flex: 0 0 auto; min-width: 0; }
   header > div > div:last-child > div:first-child { gap: 0.25rem !important; }
   header > div > div:last-child > div:first-child > button { flex: 0 0 auto; }
-  header > div > div:last-child > div:first-child > button:last-child {
-    min-width: 44px;
-    min-height: 42px;
-    padding-left: 0.65rem;
-    padding-right: 0.65rem;
-    justify-content: center;
-  }
+  header > div > div:last-child > div:first-child > button:last-child { min-width: 44px; min-height: 42px; padding-left: 0.65rem; padding-right: 0.65rem; justify-content: center; }
   header > div > div:last-child > div:first-child > button:last-child span { display: none; }
   header > div > div:last-child > div:first-child > button:nth-child(2) { display: none; }
   header > div > div:last-child > div:first-child > button:nth-child(1) { display: none; }
   header > div > div:last-child > div:last-child { max-width: calc(100vw - 1rem); }
 }
-
-@media (min-width: 640px) and (max-width: 1023px) {
-  header > div { gap: 0.5rem !important; }
-  header > div > div:last-child { flex-shrink: 0; }
-}
-
+@media (min-width: 640px) and (max-width: 1023px) { header > div { gap: 0.5rem !important; } header > div > div:last-child { flex-shrink: 0; } }
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-track { background: #0D0D11; }
 ::-webkit-scrollbar-thumb { background: #2A2A38; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #FF5500; }
-
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes stageImageFade {
-  from { opacity: 0.3; transform: scale(1.04); }
-  to { opacity: 1; transform: scale(1); }
-}
+@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes stageImageFade { from { opacity: 0.3; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
 .animate-fade-slide { animation: fadeSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-image-fade { animation: stageImageFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
