@@ -5,6 +5,10 @@ import { MusicPlaylist } from "../types";
 interface WorkoutAudioPlayerProps { playlist?: MusicPlaylist; }
 
 export const WorkoutAudioPlayer: React.FC<WorkoutAudioPlayerProps> = ({ playlist }) => {
+  const tierId = typeof window !== "undefined" ? localStorage.getItem("fysiqforge_plan_tier") : null;
+  const hasMusicEntitlement = tierId === "performance" || tierId === "elite";
+  if (!hasMusicEntitlement) return null;
+
   const tracks = playlist?.tracks || [];
   if (tracks.length === 0) return null;
   const track = tracks[0];
