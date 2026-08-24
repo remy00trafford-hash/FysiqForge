@@ -1,5 +1,6 @@
 import { ExerciseItem, TrainingPlan, UserAnswers, WorkoutDay } from "../types";
 import { translateExerciseName } from "./translator";
+import { loadExerciseGifDataset } from "../data/exerciseGifResolver";
 
 function stableScore(value: string): number {
   let hash = 2166136261;
@@ -8,6 +9,10 @@ function stableScore(value: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function norm(v: string) {
+  return v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAnswers): Promise<TrainingPlan> {
@@ -32,6 +37,25 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
     return plan;
   }
 
+  // Charge une seule fois la base GIF et construit un index exact par id/nom.
+  // Aucun fuzzy match : un GIF n'est attribué que s'il correspond réellement à l'exercice.
+  let gifByKey = new Map<string, string>();
+  try {
+    const gifDataset = await loadExerciseGifDataset();
+    gifDataset.forEach((g: any) => {
+      const url = String(g.gifUrl || "");
+      if (!url) return;
+      if (g.id) gifByKey.set(`id:${norm(String(g.id))}`, url);
+      if (g.slug) gifByKey.set(`id:${norm(String(g.slug))}`, url);
+      if (g.name) gifByKey.set(`name:${norm(String(g.name))}`, url);
+    });
+  } catch (e) {
+    console.warn("[FysiqForge] GIF dataset indisponible, conservation des illustrations du catalogue.", e);
+  }
+
+  const findExactGif = (x: any): string | undefined =>
+    gifByKey.get(`id:${norm(String(x.id))}`) || gifByKey.get(`name:${norm(String(x.name))}`);
+
   const sortedPool = [...pool].sort((a: any, b: any) => {
     const scoreA = stableScore(`${plan.id}:${a.id}:${answers.targetZone}`);
     const scoreB = stableScore(`${plan.id}:${b.id}:${answers.targetZone}`);
@@ -50,7 +74,8 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
     reps: x.reps || (/plank|hold|stretch|wall sit|isometric|gainage/i.test(x.name) ? "30 - 45 sec" : "8 - 15 reps"),
     restSeconds: Number.isFinite(Number(x.restSeconds)) ? Number(x.restSeconds) : 60,
     tips: x.tips || x.executionSteps?.[0] || "Garde une exécution contrôlée et propre.",
-    illustrationUrl: x.illustrationUrl,
+    // GIF exact prioritaire ; illustration du catalogue seulement en secours.
+    illustrationUrl: findExactGif(x) || x.illustrationUrl,
     executionSteps: Array.isArray(x.executionSteps) && x.executionSteps.length
       ? [...x.executionSteps]
       : [
@@ -68,18 +93,15 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
       const exercises: ExerciseItem[] = [];
       const start = (w * days * 20 + d * 20) % sortedPool.length;
 
-      // Pass 1: priorité absolue aux exercices ET images jamais utilisés dans le programme.
       for (let i = 0; i < sortedPool.length && exercises.length < 20; i += 1) {
         const candidate = sortedPool[(start + i) % sortedPool.length];
-        const illustration = String(candidate.illustrationUrl || "");
+        const illustration = String(findExactGif(candidate) || candidate.illustrationUrl || "");
         if (usedIds.has(candidate.id) || usedIllustrations.has(illustration)) continue;
         usedIds.add(candidate.id);
         usedIllustrations.add(illustration);
         exercises.push(makeExercise(candidate));
       }
 
-      // Pass 2: si le catalogue contient plusieurs exercices avec la même image,
-      // on préfère quand même un nouvel exercice plutôt que de réduire la séance.
       for (let i = 0; i < sortedPool.length && exercises.length < 20; i += 1) {
         const candidate = sortedPool[(start + i) % sortedPool.length];
         if (usedIds.has(candidate.id)) continue;
