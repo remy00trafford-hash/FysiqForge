@@ -5,10 +5,10 @@ import { exercisePlaceholderUrl } from "../data/exerciseMediaResolver";
 type WarmupMove = "shoulders" | "jacks" | "chest";
 interface StickFigureWarmupProps { move: WarmupMove; }
 
-const WARMUP_SEARCH: Record<WarmupMove, string> = {
-  shoulders: "arm circles",
-  jacks: "jumping jack",
-  chest: "chest stretch"
+const WARMUP_SEARCHES: Record<WarmupMove, string[]> = {
+  shoulders: ["standing arms circling", "standing alternate arms circling"],
+  jacks: ["jumping jack"],
+  chest: ["dynamic chest stretch (male)", "chest and front of shoulder stretch"]
 };
 
 const WARMUP_LABEL: Record<WarmupMove, string> = {
@@ -17,9 +17,9 @@ const WARMUP_LABEL: Record<WarmupMove, string> = {
   chest: "Ouverture de poitrine"
 };
 
-// Exact ExerciseDB/ExerciseGymGifsDB jumping-jack asset (Jack Jump Male, id 3224).
 const EXACT_WARMUP_GIFS: Partial<Record<WarmupMove, string>> = {
-  jacks: "https://d205bpvrqc9yn1.cloudfront.net/3224.gif"
+  jacks: "https://d205bpvrqc9yn1.cloudfront.net/3224.gif",
+  chest: "https://d205bpvrqc9yn1.cloudfront.net/1167.gif"
 };
 
 export const StickFigureWarmup: React.FC<StickFigureWarmupProps> = ({ move }) => {
@@ -36,25 +36,33 @@ export const StickFigureWarmup: React.FC<StickFigureWarmupProps> = ({ move }) =>
       return () => { alive = false; };
     }
     setGif(null);
-    findExerciseGif(undefined, WARMUP_SEARCH[move])
-      .then((result) => { if (alive && result) setGif(result.gifUrl); })
-      .catch(() => undefined);
+    const tryNext = (index: number) => {
+      if (index >= WARMUP_SEARCHES[move].length) return;
+      findExerciseGif(undefined, WARMUP_SEARCHES[move][index])
+        .then((result) => {
+          if (!alive) return;
+          if (result) setGif(result.gifUrl);
+          else tryNext(index + 1);
+        })
+        .catch(() => { if (alive) tryNext(index + 1); });
+    };
+    tryNext(0);
     return () => { alive = false; };
   }, [move]);
 
   return (
-    <div className="relative flex h-full min-h-[220px] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#070B10]">
+    <div className="relative flex min-h-[210px] h-[min(44vh,360px)] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#070B10] sm:min-h-[280px] sm:h-full">
       <img
         src={failed ? fallback : gif || fallback}
         alt={`Démonstration : ${WARMUP_LABEL[move]}`}
         onError={() => setFailed(true)}
-        className="h-full w-full object-contain p-5 sm:p-8"
-        loading="lazy"
+        className="h-full w-full object-contain p-2 sm:p-6"
+        loading="eager"
         decoding="async"
       />
-      <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-center justify-between gap-2">
-        <div className="rounded-lg bg-black/70 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-white/80 backdrop-blur-md">Échauffement</div>
-        <div className="rounded-lg bg-black/70 px-2.5 py-1.5 text-[9px] font-black text-white/60 backdrop-blur-md">{gif ? "GIF • démonstration" : "Préparation"}</div>
+      <div className="pointer-events-none absolute inset-x-2 bottom-2 flex items-center justify-between gap-2 sm:inset-x-3 sm:bottom-3">
+        <div className="rounded-lg bg-black/70 px-2 py-1.5 text-[8px] font-black uppercase tracking-wider text-white/80 backdrop-blur-md sm:px-2.5 sm:text-[9px]">Échauffement</div>
+        <div className="rounded-lg bg-black/70 px-2 py-1.5 text-[8px] font-black text-white/60 backdrop-blur-md sm:px-2.5 sm:text-[9px]">{gif ? "GIF • démonstration" : "Préparation"}</div>
       </div>
     </div>
   );
