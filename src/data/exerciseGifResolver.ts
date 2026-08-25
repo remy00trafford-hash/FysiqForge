@@ -4,18 +4,13 @@ type GifRecord = { id?:string; slug?:string; name?:string; gifUrl?:string; muscl
 
 const BASE="https://cdn.jsdelivr.net/gh/JahelCuadrado/ExerciseGymGifsDB@main";
 const DATASET_URLS=[
+  `${BASE}/api/en/bodyparts/arms.json`,
   `${BASE}/api/en/bodyparts/back.json`,
+  `${BASE}/api/en/bodyparts/cardio.json`,
   `${BASE}/api/en/bodyparts/chest.json`,
   `${BASE}/api/en/bodyparts/shoulders.json`,
   `${BASE}/api/en/bodyparts/legs.json`,
-  `${BASE}/api/en/bodyparts/core.json`,
-  `${BASE}/api/en/muscles/biceps.json`,
-  `${BASE}/api/en/muscles/triceps.json`,
-  `${BASE}/api/en/muscles/forearms.json`,
-  `${BASE}/api/en/muscles/delts.json`,
-  `${BASE}/api/en/muscles/pectorals.json`,
-  `${BASE}/api/en/muscles/glutes.json`,
-  `${BASE}/api/en/muscles/abs.json`
+  `${BASE}/api/en/bodyparts/core.json`
 ];
 let promise:Promise<GifRecord[]>|null=null;
 
@@ -25,9 +20,14 @@ const VERIFIED_WARMUPS:Record<string,ExerciseGifAsset>={
   "dynamic chest stretch male":{id:"1167",name:"Dynamic Chest Stretch (male)",gifUrl:"https://d205bpvrqc9yn1.cloudfront.net/1167.gif",score:100}
 };
 
-const VERIFIED_EXERCISE_ALIASES:Array<[RegExp,string]>=[
-  [/assis.*bent.?over.*rear.*delt|seated.*bent.?over.*rear.*delt|rear.*delt.*raise|élévation.*arrière.*deltoïde/,
-    "https://cdn.jsdelivr.net/gh/JahelCuadrado/ExerciseGymGifsDB@main/delts/dumbbell-rear-delt-raise.gif"]
+// Explicit high-confidence mappings are checked before fuzzy matching.
+const VERIFIED_EXERCISE_ALIASES:Array<[RegExp,ExerciseGifAsset]>= [
+  [/assis.*bent.?over.*rear.*delt|seated.*bent.?over.*rear.*delt|rear.*delt.*raise|élévation.*arrière.*deltoïde/i,
+    {id:"delts/dumbbell-rear-delt-raise",name:"Dumbbell Rear Delt Raise",gifUrl:`${BASE}/delts/dumbbell-rear-delt-raise.gif`,score:100}],
+  [/shoulder.*rotation|rotation.*épaule|rotations.*épaules/i,
+    {id:"warmup-shoulder-rotation",name:"Shoulder Rotation",gifUrl:"https://d205bpvrqc9yn1.cloudfront.net/3258.gif",score:90}],
+  [/arm.*circle|cercle.*bras/i,
+    {id:"warmup-arm-circle",name:"Arm Circle",gifUrl:"https://d205bpvrqc9yn1.cloudfront.net/3258.gif",score:90}]
 ];
 
 function norm(v:string){return v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim()}
@@ -67,20 +67,21 @@ export async function findExerciseGif(exerciseId?:string,exerciseName?:string):P
   if(warmup)return warmup;
 
   const alias=exerciseName?VERIFIED_EXERCISE_ALIASES.find(([pattern])=>pattern.test(exerciseName)):undefined;
-  if(alias)return {id:`alias:${norm(exerciseName||"")}`,name:exerciseName||"Exercice",gifUrl:alias[1],score:100};
+  if(alias)return alias[1];
 
-  const data=await loadExerciseGifDataset();
+  let data:GifRecord[]=[];
+  try{data=await loadExerciseGifDataset();}catch{return null;}
 
   const byId=data.find(r=>equal(r.id,exerciseId)||equal(r.slug,exerciseId));
   if(byId)return {id:String(byId.id||byId.slug||""),name:String(byId.name||exerciseName||"Exercice"),gifUrl:String(byId.gifUrl),score:100};
 
-  const byName=data.find(r=>equal(r.name,exerciseName));
+  const byName=data.find(r=>equal(r.name,exerciseName)||equal(r.slug,exerciseName));
   if(byName)return {id:String(byName.id||byName.slug||""),name:String(byName.name||exerciseName||"Exercice"),gifUrl:String(byName.gifUrl),score:100};
 
   if(exerciseName){
     const candidates=data
       .map(r=>({r,score:similarity(exerciseName,r.name)}))
-      .filter(x=>x.score>=0.55)
+      .filter(x=>x.score>=0.62)
       .sort((a,b)=>b.score-a.score);
     const best=candidates[0];
     if(best)return {id:String(best.r.id||best.r.slug||""),name:String(best.r.name||exerciseName),gifUrl:String(best.r.gifUrl),score:Math.round(best.score*100)};
