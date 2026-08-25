@@ -1,51 +1,54 @@
 @import "tailwindcss";
 
-html, body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  width: 100%;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-  scroll-behavior: smooth;
-  background-color: #0D0D11;
-  color: #ffffff;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: none;
-  font-family: "Aptos", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  font-synthesis: none;
+html, body { margin:0; padding:0; min-height:100%; width:100%; overflow-x:hidden!important; overflow-y:auto!important; scroll-behavior:smooth; background-color:#0D0D11; color:#fff; -webkit-overflow-scrolling:touch; overscroll-behavior-x:none; font-family:"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif; font-synthesis:none; }
+body { padding-top:env(safe-area-inset-top,0px); }
+#root { min-height:100vh; width:100%; overflow-x:clip; overflow-y:visible; display:flex; flex-direction:column; }
+main { min-width:0; width:100%; }
+button,a,input,select,textarea { -webkit-tap-highlight-color:transparent; font:inherit; }
+button { touch-action:manipulation; }
+h1,h2,h3,h4,h5,h6 { font-family:"Aptos Display","Segoe UI","Helvetica Neue",Arial,sans-serif; letter-spacing:-0.015em; }
+
+@media (max-width:639px) {
+  header { padding-left:max(.5rem,env(safe-area-inset-left,0px)); padding-right:max(.5rem,env(safe-area-inset-right,0px)); }
+  header > div { gap:.35rem!important; }
+  header > div > button:first-child { min-width:0; flex:1 1 auto; overflow:hidden; }
+  header > div > button:first-child > div:last-child { min-width:0; overflow:hidden; }
+  header > div > button:first-child span { white-space:nowrap; }
+  header > div > div:last-child { flex:0 0 auto; min-width:0; }
+  header > div > div:last-child > div:first-child { gap:.25rem!important; }
+  header > div > div:last-child > div:first-child > button { flex:0 0 auto; }
+  header > div > div:last-child > div:first-child > button:last-child { min-width:44px; min-height:42px; padding-left:.65rem; padding-right:.65rem; justify-content:center; }
+  header > div > div:last-child > div:first-child > button:last-child span { display:none; }
+  header > div > div:last-child > div:first-child > button:nth-child(2),header > div > div:last-child > div:first-child > button:nth-child(1) { display:none; }
+  header > div > div:last-child > div:last-child { max-width:calc(100vw - 1rem); }
+
+  /* GuidedWorkoutPlayer: use the real mobile viewport and allow the full workout UI to scroll. */
+  .fixed.inset-0.z-50 { height:100dvh!important; min-height:100dvh!important; max-height:100dvh!important; overflow:hidden!important; }
+  .fixed.inset-0.z-50 > header { min-height:58px; padding-top:max(.55rem,env(safe-area-inset-top,0px)); padding-bottom:.55rem; }
+  .fixed.inset-0.z-50 > header h2 { max-width:calc(100vw - 170px)!important; white-space:normal!important; overflow:visible!important; text-overflow:clip!important; line-height:1.2!important; overflow-wrap:anywhere; }
+  .fixed.inset-0.z-50 > main { min-height:0!important; height:auto!important; flex:1 1 auto!important; align-items:stretch!important; justify-content:flex-start!important; gap:1rem!important; padding:.8rem .8rem max(1rem,env(safe-area-inset-bottom,0px))!important; overflow-y:auto!important; overscroll-behavior-y:contain; -webkit-overflow-scrolling:touch; }
+  .fixed.inset-0.z-50 > main > div:first-child { order:1; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) { order:2; }
+  .fixed.inset-0.z-50 > main > div { width:100%!important; max-width:none!important; min-width:0!important; flex:0 0 auto!important; }
+  .fixed.inset-0.z-50 > main > div:first-child > div.relative.w-full { height:clamp(220px,48dvh,360px)!important; min-height:220px!important; max-height:360px!important; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) { padding:1rem!important; border-radius:1.1rem!important; gap:.9rem!important; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) h3 { font-size:clamp(1.15rem,5.2vw,1.55rem)!important; line-height:1.18!important; overflow-wrap:anywhere; letter-spacing:-.01em; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) p,.fixed.inset-0.z-50 > main > div:nth-child(2) span,.fixed.inset-0.z-50 > main > div:nth-child(2) button { line-height:1.4!important; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) .grid { gap:.45rem!important; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) .grid > div { min-width:0; }
+  .fixed.inset-0.z-50 > main > div:nth-child(2) .grid > div p:last-child { overflow-wrap:anywhere; line-height:1.2!important; }
+  .fixed.inset-0.z-50 > main > div:first-child > div.flex.items-center.gap-3.pt-2 { flex-wrap:wrap; justify-content:center; gap:.45rem!important; }
+  .fixed.inset-0.z-50 > main > div:first-child > div.flex.items-center.gap-3.pt-2 button { min-height:44px; flex:0 1 auto; }
+  .fixed.inset-0.z-50 .text-\[120px\] { font-size:clamp(72px,24vw,108px)!important; }
 }
 
-body { padding-top: env(safe-area-inset-top, 0px); }
-#root { min-height: 100vh; width: 100%; overflow-x: clip; overflow-y: visible; display: flex; flex-direction: column; }
-main { min-width: 0; width: 100%; }
-button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; font: inherit; }
-button { touch-action: manipulation; }
-h1,h2,h3,h4,h5,h6 { font-family: "Aptos Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif; letter-spacing: -0.015em; }
-
-@media (max-width: 639px) {
-  header { padding-left: max(0.5rem, env(safe-area-inset-left, 0px)); padding-right: max(0.5rem, env(safe-area-inset-right, 0px)); }
-  header > div { gap: 0.35rem !important; }
-  header > div > button:first-child { min-width: 0; flex: 1 1 auto; overflow: hidden; }
-  header > div > button:first-child > div:last-child { min-width: 0; overflow: hidden; }
-  header > div > button:first-child span { white-space: nowrap; }
-  header > div > div:last-child { flex: 0 0 auto; min-width: 0; }
-  header > div > div:last-child > div:first-child { gap: 0.25rem !important; }
-  header > div > div:last-child > div:first-child > button { flex: 0 0 auto; }
-  header > div > div:last-child > div:first-child > button:last-child { min-width: 44px; min-height: 42px; padding-left: 0.65rem; padding-right: 0.65rem; justify-content: center; }
-  header > div > div:last-child > div:first-child > button:last-child span { display: none; }
-  header > div > div:last-child > div:first-child > button:nth-child(2) { display: none; }
-  header > div > div:last-child > div:first-child > button:nth-child(1) { display: none; }
-  header > div > div:last-child > div:last-child { max-width: calc(100vw - 1rem); }
+@media (min-width:640px) and (max-width:1023px) {
+  header > div { gap:.5rem!important; }
+  header > div > div:last-child { flex-shrink:0; }
+  .fixed.inset-0.z-50 > main { min-height:0!important; overflow-y:auto!important; align-items:stretch!important; }
 }
-@media (min-width: 640px) and (max-width: 1023px) { header > div { gap: 0.5rem !important; } header > div > div:last-child { flex-shrink: 0; } }
-::-webkit-scrollbar { width: 10px; }
-::-webkit-scrollbar-track { background: #0D0D11; }
-::-webkit-scrollbar-thumb { background: #2A2A38; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #FF5500; }
-@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes stageImageFade { from { opacity: 0.3; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
-.animate-fade-slide { animation: fadeSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.animate-image-fade { animation: stageImageFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
-.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+
+::-webkit-scrollbar{width:10px} ::-webkit-scrollbar-track{background:#0D0D11} ::-webkit-scrollbar-thumb{background:#2A2A38;border-radius:5px} ::-webkit-scrollbar-thumb:hover{background:#FF5500}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes stageImageFade{from{opacity:.3;transform:scale(1.04)}to{opacity:1;transform:scale(1)}}
+.animate-fade-slide{animation:fadeSlideIn .35s cubic-bezier(.16,1,.3,1) forwards}.animate-image-fade{animation:stageImageFade .4s cubic-bezier(.16,1,.3,1) forwards}.safe-bottom{padding-bottom:env(safe-area-inset-bottom,0px)}.safe-top{padding-top:env(safe-area-inset-top,0px)}
