@@ -15,19 +15,36 @@ function norm(v: string) {
   return v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+type CatalogExercise = {
+  id: string;
+  name: string;
+  illustrationUrl: string;
+  muscleGroup?: string;
+  sets?: number | string;
+  reps?: string;
+  restSeconds?: number | string;
+  tips?: string;
+  executionSteps?: string[];
+  alternativeExercise?: string;
+};
+
 export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAnswers): Promise<TrainingPlan> {
   const weeks = Math.max(1, plan.totalWeeks || 8);
   const days = Math.min(6, Math.max(2, parseInt(String(answers.frequency || "4").replace(/\D/g, ""), 10) || 4));
   const response = await fetch(`/api/exercises?equipment=${encodeURIComponent(answers.equipment || "")}&limit=2000`);
   if (!response.ok) return plan;
 
-  const data = await response.json();
-  const catalog = Array.isArray(data.exercises) ? data.exercises : [];
-  const pool = Array.from(
-    new Map(
+  const data: unknown = await response.json();
+  const catalog: unknown[] = Array.isArray((data as { exercises?: unknown[] })?.exercises) ? (data as { exercises: unknown[] }).exercises : [];
+  const pool: CatalogExercise[] = Array.from(
+    new Map<string, CatalogExercise>(
       catalog
-        .filter((x: any) => x?.id && x?.name && x?.illustrationUrl)
-        .map((x: any) => [x.id, x])
+        .filter((x): x is CatalogExercise => {
+          if (!x || typeof x !== "object") return false;
+          const value = x as Partial<CatalogExercise>;
+          return Boolean(value.id && value.name && value.illustrationUrl);
+        })
+        .map((x) => [x.id, x])
     ).values()
   );
 
@@ -37,12 +54,10 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
     return plan;
   }
 
-  // Charge une seule fois la base GIF et construit un index exact par id/nom.
-  // Aucun fuzzy match : un GIF n'est attribué que s'il correspond réellement à l'exercice.
   let gifByKey = new Map<string, string>();
   try {
     const gifDataset = await loadExerciseGifDataset();
-    gifDataset.forEach((g: any) => {
+    gifDataset.forEach((g: { id?: string; slug?: string; name?: string; gifUrl?: string }) => {
       const url = String(g.gifUrl || "");
       if (!url) return;
       if (g.id) gifByKey.set(`id:${norm(String(g.id))}`, url);
@@ -53,10 +68,10 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
     console.warn("[FysiqForge] GIF dataset indisponible, conservation des illustrations du catalogue.", e);
   }
 
-  const findExactGif = (x: any): string | undefined =>
+  const findExactGif = (x: CatalogExercise): string | undefined =>
     gifByKey.get(`id:${norm(String(x.id))}`) || gifByKey.get(`name:${norm(String(x.name))}`);
 
-  const sortedPool = [...pool].sort((a: any, b: any) => {
+  const sortedPool = [...pool].sort((a, b) => {
     const scoreA = stableScore(`${plan.id}:${a.id}:${answers.targetZone}`);
     const scoreB = stableScore(`${plan.id}:${b.id}:${answers.targetZone}`);
     return scoreA - scoreB;
@@ -66,7 +81,7 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
   const usedIllustrations = new Set<string>();
   const schedules: WorkoutDay[][] = [];
 
-  const makeExercise = (x: any): ExerciseItem => ({
+  const makeExercise = (x: CatalogExercise): ExerciseItem => ({
     id: x.id,
     name: translateExerciseName(x.name, "FR"),
     muscleGroup: x.muscleGroup || "Musculation",
@@ -74,21 +89,15 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
     reps: x.reps || (/plank|hold|stretch|wall sit|isometric|gainage/i.test(x.name) ? "30 - 45 sec" : "8 - 15 reps"),
     restSeconds: Number.isFinite(Number(x.restSeconds)) ? Number(x.restSeconds) : 60,
     tips: x.tips || x.executionSteps?.[0] || "Garde une exécution contrôlée et propre.",
-    // GIF exact prioritaire ; illustration du catalogue seulement en secours.
     illustrationUrl: findExactGif(x) || x.illustrationUrl,
     executionSteps: Array.isArray(x.executionSteps) && x.executionSteps.length
       ? [...x.executionSteps]
-      : [
-          "Position de départ correcte",
-          "Effectue le mouvement de façon contrôlée",
-          "Reviens à la position de départ"
-        ],
+      : ["Position de départ correcte", "Effectue le mouvement de façon contrôlée", "Reviens à la position de départ"],
     alternativeExercise: x.alternativeExercise
   });
 
   for (let w = 0; w < weeks; w += 1) {
     const week: WorkoutDay[] = [];
-
     for (let d = 0; d < days; d += 1) {
       const exercises: ExerciseItem[] = [];
       const start = (w * days * 20 + d * 20) % sortedPool.length;
@@ -116,21 +125,18 @@ export async function hydrateWeeklySchedules(plan: TrainingPlan, answers: UserAn
 
       const template = plan.weeklySchedules?.[w]?.[d] || plan.weekSchedule?.[d] || plan.weekSchedule?.[0];
       week.push({
-        ...(template || {}),
         dayNumber: d + 1,
         dayName: template?.dayName || `Jour ${d + 1}`,
         title: template?.title || `Séance ${d + 1}`,
         focus: template?.focus || answers.targetZone || "Corps entier",
+        estimatedDurationMin: template?.estimatedDurationMin ?? 45,
+        caloriesBurnedEst: template?.caloriesBurnedEst ?? 300,
+        isCompleted: template?.isCompleted,
         exercises
       });
     }
-
     schedules.push(week);
   }
 
-  return {
-    ...plan,
-    weeklySchedules: schedules,
-    weekSchedule: schedules[0]
-  } as TrainingPlan;
+  return { ...plan, weeklySchedules: schedules, weekSchedule: schedules[0] } as TrainingPlan;
 }
