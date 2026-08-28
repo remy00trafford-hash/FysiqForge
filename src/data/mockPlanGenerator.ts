@@ -15,62 +15,33 @@ import {
 } from "./exerciseLibrary";
 import type { ExerciseLibraryItem } from "./exerciseLibrary";
 
-/**
- * IMPORTANT ARCHITECTURE RULE
- * ---------------------------
- * The master exercise library is the ONLY source of exercises for FysiqForge.
- * The AI endpoint may personalize the program title/description/progression,
- * but its exercise list is deliberately ignored and rebuilt from EXERCISE_LIBRARY.
- *
- * This prevents invented exercise names, unknown movements and broken media
- * mappings. Each selected item carries a stable baseMovementId, which is the
- * future key for verified animation media.
- */
-
+/** The master exercise library is the ONLY source of exercises. AI exercise lists are ignored. */
 const EXERCISE_COUNT = EXERCISE_LIBRARY.length;
-if (EXERCISE_COUNT !== 600) {
-  throw new Error(`Expected 600 master exercise entries, found ${EXERCISE_COUNT}`);
-}
+if (EXERCISE_COUNT !== 600) throw new Error(`Expected 600 master exercise entries, found ${EXERCISE_COUNT}`);
 
 const parseFrequency = (value: string): number => {
   const parsed = Number.parseInt(String(value).replace(/\D/g, ""), 10);
   return Number.isFinite(parsed) ? Math.min(6, Math.max(2, parsed)) : 4;
 };
 
-const durationToMinutes = (value: UserAnswers["duration"]): number => {
-  if (value === "30-45 min") return 38;
-  if (value === "60-90 min") return 75;
-  return 53;
-};
+const durationToMinutes = (value: UserAnswers["duration"]): number =>
+  value === "30-45 min" ? 38 : value === "60-90 min" ? 75 : 53;
 
-const durationToBucket = (value: UserAnswers["duration"]): ExerciseSelectionQuery["duration"] => {
-  if (value === "30-45 min") return "30-45";
-  if (value === "60-90 min") return "60-90";
-  return "45-60";
-};
+const durationToBucket = (value: UserAnswers["duration"]): ExerciseSelectionQuery["duration"] =>
+  value === "30-45 min" ? "30-45" : value === "60-90 min" ? "60-90" : "45-60";
 
 function targetCategoryForZone(zone: UserAnswers["targetZone"]): string[] {
   switch (zone) {
-    case "Pectoraux & Triceps":
-      return ["chest", "arms"];
-    case "Epaules & Dos":
-      return ["shoulders", "back"];
-    case "Bras (Biceps/Triceps)":
-      return ["arms"];
-    case "Abdominaux & Core":
-      return ["core"];
-    case "Jambes & Fessiers":
-      return ["legs"];
-    default:
-      return ["chest", "back", "shoulders", "arms", "legs", "core"];
+    case "Pectoraux & Triceps": return ["chest", "arms"];
+    case "Epaules & Dos": return ["shoulders", "back"];
+    case "Bras (Biceps/Triceps)": return ["arms"];
+    case "Abdominaux & Core": return ["core"];
+    case "Jambes & Fessiers": return ["legs"];
+    default: return ["chest", "back", "shoulders", "arms", "legs", "core"];
   }
 }
 
-function selectionQuery(
-  userAnswers: UserAnswers,
-  limit: number,
-  excludeIds: string[] = [],
-): ExerciseSelectionQuery {
+function selectionQuery(userAnswers: UserAnswers, limit: number, excludeIds: string[] = []): ExerciseSelectionQuery {
   return {
     objective: userAnswers.objective,
     targetZone: userAnswers.targetZone,
@@ -83,106 +54,70 @@ function selectionQuery(
   };
 }
 
-function exerciseItemFromLibrary(item: ExerciseLibraryItem, index: number): ExerciseItem {
+function exerciseItemFromLibrary(item: ExerciseLibraryItem): ExerciseItem {
   const reps = item.category === "conditioning"
     ? "30 - 60 sec"
     : item.category === "core" || item.category === "mobility_recovery"
       ? "30 - 45 sec"
-      : item.level === "Avancé"
-        ? "6 - 10 reps"
-        : "8 - 15 reps";
-
+      : item.level === "Avancé" ? "6 - 10 reps" : "8 - 15 reps";
   const sets = item.category === "conditioning" || item.category === "mobility_recovery" ? 2 : 3;
 
   return {
     id: item.id,
+    baseMovementId: item.baseMovementId,
     name: item.name,
     muscleGroup: item.primaryMuscles.join(" & ") || item.category,
     sets,
     reps,
     restSeconds: item.category === "conditioning" ? 45 : item.category === "mobility_recovery" ? 30 : 60,
     tips: `Exécution contrôlée. Mouvement de référence : ${item.baseMovement}. Variante : ${item.prescription}.`,
-    // Deliberately blank until the media audit attaches a verified animation.
     illustrationUrl: "",
     executionSteps: [
       `Mouvement : ${item.baseMovement}`,
       `Prescription : ${item.prescription}`,
-      `Matériel compatible : ${item.equipment.join(", ")}`,
+      `Matériel compatible : ${item.equipmentTags.join(", ")}`,
       "Garde une exécution propre et contrôlée.",
     ],
-    alternativeExercise: undefined,
   };
 }
 
-function chooseDayExercises(
-  userAnswers: UserAnswers,
-  dayIndex: number,
-  weekIndex: number,
-  globallyUsed: Set<string>,
-): ExerciseItem[] {
-  const targetCount = userAnswers.duration === "30-45 min"
-    ? 8
-    : userAnswers.duration === "60-90 min"
-      ? 12
-      : 10;
-
-  const zoneCategories = targetCategoryForZone(userAnswers.targetZone);
+function chooseDayExercises(userAnswers: UserAnswers, dayIndex: number, weekIndex: number, used: Set<string>): ExerciseItem[] {
+  const targetCount = userAnswers.duration === "30-45 min" ? 8 : userAnswers.duration === "60-90 min" ? 12 : 10;
+  const categories = targetCategoryForZone(userAnswers.targetZone);
   const primaryLimit = Math.max(3, Math.ceil(targetCount * 0.7));
-  const secondaryLimit = targetCount - primaryLimit;
 
-  const primary = selectExercises({
-    ...selectionQuery(userAnswers, Math.max(primaryLimit * 2, 10), [...globallyUsed]),
-  }).filter((item) => zoneCategories.includes(item.category));
-
-  const secondary = selectExercises({
-    ...selectionQuery(userAnswers, Math.max(secondaryLimit * 3, 8), [
-      ...globallyUsed,
-      ...primary.map((item) => item.id),
-    ]),
-  });
+  const primary = selectExercises(selectionQuery(userAnswers, Math.max(primaryLimit * 2, 10), [...used]))
+    .filter((item) => categories.includes(item.category));
+  const secondary = selectExercises(selectionQuery(userAnswers, Math.max((targetCount - primaryLimit) * 3, 8), [
+    ...used,
+    ...primary.map((item) => item.id),
+  ]));
 
   const combined = [...primary, ...secondary];
-  const localSeen = new Set<string>();
   const ordered: ExerciseLibraryItem[] = [];
-
-  // Deterministic rotation prevents every day from receiving the same first N items.
+  const seen = new Set<string>();
   const offset = (weekIndex * 17 + dayIndex * 7) % Math.max(combined.length, 1);
+
   for (let i = 0; i < combined.length && ordered.length < targetCount; i += 1) {
-    const candidate = combined[(offset + i) % combined.length];
-    if (!candidate || localSeen.has(candidate.id)) continue;
-    localSeen.add(candidate.id);
-    ordered.push(candidate);
+    const item = combined[(offset + i) % combined.length];
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    ordered.push(item);
   }
-
-  // Within a week we avoid repeating the same library entry. Once the 600-entry
-  // catalog is exhausted over many weeks, controlled reuse is allowed: no new
-  // exercise is invented and the baseMovementId remains stable.
-  for (const item of ordered) globallyUsed.add(item.id);
-
-  return ordered.map((item, index) => exerciseItemFromLibrary(item, index));
+  ordered.forEach((item) => used.add(item.id));
+  return ordered.map(exerciseItemFromLibrary);
 }
 
 function buildWeekSchedule(userAnswers: UserAnswers): WorkoutDay[][] {
-  const weeks = 8;
   const daysPerWeek = parseFrequency(userAnswers.frequency);
   const durationMin = durationToMinutes(userAnswers.duration);
   const schedules: WorkoutDay[][] = [];
+  const titles = ["Forge — Force & Technique", "Forge — Volume & Hypertrophie", "Forge — Intensification", "Forge — Densité", "Forge — Surcharge progressive", "Forge — Consolidation"];
 
-  const titles = [
-    "Forge — Force & Technique",
-    "Forge — Volume & Hypertrophie",
-    "Forge — Intensification",
-    "Forge — Densité",
-    "Forge — Surcharge progressive",
-    "Forge — Consolidation",
-  ];
-
-  for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
-    const usedThisWeek = new Set<string>();
+  for (let weekIndex = 0; weekIndex < 8; weekIndex += 1) {
+    const used = new Set<string>();
     const week: WorkoutDay[] = [];
-
     for (let dayIndex = 0; dayIndex < daysPerWeek; dayIndex += 1) {
-      const exercises = chooseDayExercises(userAnswers, dayIndex, weekIndex, usedThisWeek);
       week.push({
         dayNumber: dayIndex + 1,
         dayName: `Jour ${dayIndex + 1}`,
@@ -190,100 +125,38 @@ function buildWeekSchedule(userAnswers: UserAnswers): WorkoutDay[][] {
         focus: userAnswers.targetZone,
         estimatedDurationMin: durationMin,
         caloriesBurnedEst: userAnswers.objective === "Perte de gras (Sèche)" ? 450 : 350,
-        exercises,
+        exercises: chooseDayExercises(userAnswers, dayIndex, weekIndex, used),
         isCompleted: false,
       });
     }
-
     schedules.push(week);
   }
-
   return schedules;
 }
 
 function getDefaultWeeksProgression(): WeekProgressionInfo[] {
   return [
-    {
-      weekNumber: 1,
-      title: "Fondation",
-      focus: "Technique, contrôle du mouvement et construction de la régularité.",
-      loadAdvice: "Charge modérée, garde 2 à 3 répétitions en réserve.",
-      repsModifier: "Plage standard",
-    },
-    {
-      weekNumber: 2,
-      title: "Volume",
-      focus: "Augmenter progressivement le volume sans dégrader la technique.",
-      loadAdvice: "Ajoute une petite charge ou quelques répétitions lorsque la technique reste solide.",
-      repsModifier: "+1 à 2 répétitions si possible",
-    },
-    {
-      weekNumber: 3,
-      title: "Surcharge progressive",
-      focus: "Renforcer la progression sur les mouvements principaux.",
-      loadAdvice: "Progression graduelle selon la tolérance et le niveau.",
-      repsModifier: "Plage standard",
-    },
-    {
-      weekNumber: 4,
-      title: "Consolidation",
-      focus: "Stabiliser les acquis et améliorer la qualité d'exécution.",
-      loadAdvice: "Maintiens la charge si la récupération est insuffisante.",
-      repsModifier: "Contrôle maximal",
-    },
-    {
-      weekNumber: 5,
-      title: "Intensification",
-      focus: "Accent sur la tension mécanique et la qualité des séries.",
-      loadAdvice: "Augmentation prudente de l'intensité sur les exercices adaptés.",
-      repsModifier: "Plage basse à moyenne",
-    },
-    {
-      weekNumber: 6,
-      title: "Densité",
-      focus: "Maintenir la qualité tout en optimisant la densité des séances.",
-      loadAdvice: "Réduis légèrement les temps de repos uniquement si la technique reste stable.",
-      repsModifier: "Plage standard",
-    },
-    {
-      weekNumber: 7,
-      title: "Pic contrôlé",
-      focus: "Exploiter la progression accumulée sans sacrifier la récupération.",
-      loadAdvice: "Travail soutenu, sans échec systématique.",
-      repsModifier: "Plage basse à moyenne",
-    },
-    {
-      weekNumber: 8,
-      title: "Consolidation & bilan",
-      focus: "Consolider les résultats et préparer le prochain cycle.",
-      loadAdvice: "Réduis le volume si la fatigue accumulée est élevée.",
-      repsModifier: "Selon récupération",
-    },
+    { weekNumber: 1, title: "Fondation", focus: "Technique et contrôle du mouvement.", loadAdvice: "Charge modérée, 2 à 3 répétitions en réserve.", repsModifier: "Plage standard" },
+    { weekNumber: 2, title: "Volume", focus: "Augmentation progressive du volume.", loadAdvice: "Ajoute des répétitions ou une petite charge si la technique reste solide.", repsModifier: "+1 à 2 répétitions si possible" },
+    { weekNumber: 3, title: "Surcharge progressive", focus: "Progression sur les mouvements principaux.", loadAdvice: "Progression graduelle selon la récupération.", repsModifier: "Plage standard" },
+    { weekNumber: 4, title: "Consolidation", focus: "Stabilisation des acquis.", loadAdvice: "Maintiens la charge si la récupération est insuffisante.", repsModifier: "Contrôle maximal" },
+    { weekNumber: 5, title: "Intensification", focus: "Accent sur la tension mécanique.", loadAdvice: "Augmentation prudente de l'intensité.", repsModifier: "Plage basse à moyenne" },
+    { weekNumber: 6, title: "Densité", focus: "Optimisation de la densité sans dégrader la technique.", loadAdvice: "Réduis légèrement les repos seulement si la technique reste stable.", repsModifier: "Plage standard" },
+    { weekNumber: 7, title: "Pic contrôlé", focus: "Exploiter la progression sans sacrifier la récupération.", loadAdvice: "Travail soutenu, sans échec systématique.", repsModifier: "Plage basse à moyenne" },
+    { weekNumber: 8, title: "Consolidation & bilan", focus: "Consolider les résultats et préparer le prochain cycle.", loadAdvice: "Réduis le volume si la fatigue accumulée est élevée.", repsModifier: "Selon récupération" },
   ];
 }
 
-function buildPlanFromLibrary(
-  tierId: PlanTierId,
-  userAnswers: UserAnswers,
-  analysis: PhotoAnalysisResult,
-  aiMeta?: Partial<Pick<TrainingPlan, "programTitle" | "subtitle" | "description">>,
-): TrainingPlan {
-  const tierName =
-    tierId === "essentiel"
-      ? "Plan Essentiel"
-      : tierId === "performance"
-        ? "Plan Performance"
-        : "Plan Élite / VIP";
-
+function buildPlanFromLibrary(tierId: PlanTierId, userAnswers: UserAnswers, analysis: PhotoAnalysisResult, aiMeta?: Partial<Pick<TrainingPlan, "programTitle" | "subtitle" | "description">>): TrainingPlan {
+  const tierName = tierId === "essentiel" ? "Plan Essentiel" : tierId === "performance" ? "Plan Performance" : "Plan Élite / VIP";
   const weeklySchedules = buildWeekSchedule(userAnswers);
-
   return {
     id: `plan-${Date.now()}`,
     tierId,
     tierName,
     programTitle: aiMeta?.programTitle || `FORGE — ${userAnswers.targetZone.toUpperCase()}`,
     subtitle: aiMeta?.subtitle || `Programme 8 semaines — ${userAnswers.level}`,
-    description: aiMeta?.description || `Programme construit exclusivement à partir de la bibliothèque maître FysiqForge de ${EXERCISE_COUNT} entrées sélectionnées et classées selon vos critères.`,
+    description: aiMeta?.description || `Programme construit exclusivement à partir de la bibliothèque maître FysiqForge de ${EXERCISE_COUNT} entrées.`,
     analysis,
     userAnswers,
     totalWeeks: 8,
@@ -295,34 +168,23 @@ function buildPlanFromLibrary(
   };
 }
 
-/**
- * Async generator.
- * AI is used only for personalization metadata; exercise selection is local and
- * deterministic from the master library.
- */
-export async function generateTrainingPlanAsync(
-  tierId: PlanTierId,
-  userAnswers: UserAnswers,
-  analysis: PhotoAnalysisResult,
-): Promise<TrainingPlan> {
+/** AI supplies only plan copy; exercises always come from EXERCISE_LIBRARY. */
+export async function generateTrainingPlanAsync(tierId: PlanTierId, userAnswers: UserAnswers, analysis: PhotoAnalysisResult): Promise<TrainingPlan> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25000);
-
     const res = await fetch("/api/ai/generate-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tierId, userAnswers, analysis }),
       signal: controller.signal,
     });
-
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
       if (data?.success && data?.planData) {
         const pData = data.planData;
-        // Deliberately ignore pData.weekSchedule exercises.
         return buildPlanFromLibrary(tierId, userAnswers, analysis, {
           programTitle: pData.programTitle,
           subtitle: pData.subtitle,
@@ -333,15 +195,9 @@ export async function generateTrainingPlanAsync(
   } catch (error) {
     console.warn("[FysiqForge] AI metadata generation failed; using deterministic library engine:", error);
   }
-
   return generateTrainingPlan(tierId, userAnswers, analysis);
 }
 
-/** Local deterministic fallback. It uses exactly the same master library. */
-export function generateTrainingPlan(
-  tierId: PlanTierId,
-  userAnswers: UserAnswers,
-  analysis: PhotoAnalysisResult,
-): TrainingPlan {
+export function generateTrainingPlan(tierId: PlanTierId, userAnswers: UserAnswers, analysis: PhotoAnalysisResult): TrainingPlan {
   return buildPlanFromLibrary(tierId, userAnswers, analysis);
 }
