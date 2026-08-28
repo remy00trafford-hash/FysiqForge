@@ -10,12 +10,6 @@
  * Design rule: the plan generator selects existing exercise IDs; it must not
  * invent exercise names or IDs. Media is attached later to baseMovementId,
  * after independent visual + licence verification.
- *
- * Programming principles used here are deliberately conservative: match the
- * exercise to the user's goal and available equipment, prioritize major muscle
- * groups, and scale training progressively rather than relying on arbitrary
- * complexity. These principles are consistent with current ACSM resistance-
- * training guidance and WHO physical-activity guidance.
  */
 
 import {
@@ -65,6 +59,7 @@ export interface ExerciseLibraryItem extends MasterExercise {
   durationFit: Array<"30-45" | "45-60" | "60-90">;
   constraintTags: string[];
   movementFamily: string;
+  level: ExerciseLevel;
 }
 
 const normalize = (value: string): string =>
@@ -78,7 +73,23 @@ const normalize = (value: string): string =>
 const includesAny = (value: string, terms: string[]) =>
   terms.some((term) => value.includes(term));
 
-const BODYWEIGHT_TERMS = ["push-up", "push up", "plank", "pull-up", "pull up", "chin-up", "chin up", "dip", "lunge", "squat", "crawl", "burpee", "jump", "mountain climber", "inchworm", "bird dog", "dead bug", "hollow", "crunch", "sit-up", "sit up", "bridge", "fire hydrant", "pistol", "wall sit"];
+const BODYWEIGHT_TERMS = [
+  "push-up", "push up", "plank", "pull-up", "pull up", "chin-up", "chin up",
+  "dip", "lunge", "squat", "crawl", "burpee", "jump", "mountain climber",
+  "inchworm", "bird dog", "dead bug", "hollow", "crunch", "sit-up", "sit up",
+  "bridge", "fire hydrant", "pistol", "wall sit",
+];
+
+function deriveLevel(entry: MasterExercise): ExerciseLevel {
+  const text = normalize(`${entry.baseMovement} ${entry.variant}`);
+  if (includesAny(text, ["assisted", "supported", "incline push up", "machine", "low impact"])) {
+    return "Débutant";
+  }
+  if (includesAny(text, ["pistol", "nordic", "toes to bar", "weighted", "deficit", "zercher", "jump", "sprint"])) {
+    return "Avancé";
+  }
+  return "Intermédiaire";
+}
 
 function deriveMetadata(entry: MasterExercise): Omit<ExerciseLibraryItem, keyof MasterExercise> {
   const text = normalize(`${entry.baseMovement} ${entry.variant}`);
@@ -126,8 +137,8 @@ function deriveMetadata(entry: MasterExercise): Omit<ExerciseLibraryItem, keyof 
     secondaryMuscles = ["recuperation"];
   }
 
-  const equipmentTags = new Set<string>(["bodyweight"]);
-  if (includesAny(text, ["barbell", "ez-bar"])) equipmentTags.add("barbell");
+  const equipmentTags = new Set<string>();
+  if (includesAny(text, ["barbell", "ez bar"])) equipmentTags.add("barbell");
   if (includesAny(text, ["dumbbell"])) equipmentTags.add("dumbbell");
   if (includesAny(text, ["cable"])) equipmentTags.add("cable");
   if (includesAny(text, ["machine", "pec deck", "leg press"])) equipmentTags.add("machine");
@@ -138,8 +149,9 @@ function deriveMetadata(entry: MasterExercise): Omit<ExerciseLibraryItem, keyof 
   if (includesAny(text, ["ring"])) equipmentTags.add("rings");
   if (includesAny(text, ["sled"])) equipmentTags.add("sled");
   if (includesAny(text, ["med ball"])) equipmentTags.add("medicine_ball");
-  if (includesAny(text, ["trap-bar"])) equipmentTags.add("trap_bar");
+  if (includesAny(text, ["trap bar"])) equipmentTags.add("trap_bar");
   if (includesAny(text, ["bench"])) equipmentTags.add("bench");
+  if (equipmentTags.size === 0) equipmentTags.add("bodyweight");
 
   const objectiveTags = category === "conditioning"
     ? ["Perte de gras (Sèche)", "Force & Athlétisme", "Tonification & Définition"]
@@ -161,22 +173,17 @@ function deriveMetadata(entry: MasterExercise): Omit<ExerciseLibraryItem, keyof 
               ? ["Tout le corps", "Abdominaux & Core"]
               : ["Tout le corps"];
 
-  const durationFit = category === "conditioning"
-    ? ["30-45", "45-60", "60-90"]
-    : category === "mobility_recovery"
-      ? ["30-45", "45-60"]
-      : ["30-45", "45-60", "60-90"];
+  const durationFit = category === "mobility_recovery"
+    ? ["30-45", "45-60"]
+    : ["30-45", "45-60", "60-90"];
 
   const constraintTags = [
-    "requires_no_special_medical_clearance",
     ...(includesAny(text, ["jump", "burpee", "broad jump", "box jump", "sprint", "skater"])
       ? ["high_impact"]
       : ["low_impact"]),
     ...(BODYWEIGHT_TERMS.some((term) => text.includes(term)) ? ["home_friendly"] : []),
     ...(entry.category === "mobility_recovery" ? ["recovery_friendly"] : []),
   ];
-
-  const movementFamily = entry.baseMovement;
 
   return {
     primaryMuscles,
@@ -186,7 +193,8 @@ function deriveMetadata(entry: MasterExercise): Omit<ExerciseLibraryItem, keyof 
     targetZoneTags,
     durationFit,
     constraintTags,
-    movementFamily,
+    movementFamily: entry.baseMovement,
+    level: deriveLevel(entry),
   };
 }
 
@@ -199,9 +207,11 @@ export const EXERCISE_LIBRARY_COUNT = EXERCISE_LIBRARY.length;
 
 export function exerciseMatchesEquipment(item: ExerciseLibraryItem, equipment: ExerciseEquipment): boolean {
   if (equipment === "Salle de sport équipée") return true;
+
   if (equipment === "Haltères + Banc maison") {
     return item.equipmentTags.every((tag) => ["bodyweight", "dumbbell", "bench"].includes(tag));
   }
+
   return item.equipmentTags.every((tag) => tag === "bodyweight");
 }
 
@@ -209,21 +219,19 @@ function matchesConstraints(item: ExerciseLibraryItem, constraints: string): boo
   const c = normalize(constraints || "");
   if (!c) return true;
 
-  if (includesAny(c, ["genou", "knee"]) && includesAny(item.name.toLowerCase(), ["jump", "box jump", "jumping lunge", "sprint"])) return false;
-  if (includesAny(c, ["dos", "lombaire", "lower back"]) && includesAny(item.baseMovement.toLowerCase(), ["deadlift", "good morning", "bent-over row"])) return false;
-  if (includesAny(c, ["epaule", "shoulder"]) && includesAny(item.baseMovement.toLowerCase(), ["overhead press", "behind-the-neck"])) return false;
+  if (includesAny(c, ["genou", "knee"]) && item.constraintTags.includes("high_impact")) return false;
+  if (includesAny(c, ["dos", "lombaire", "lower back"]) && includesAny(normalize(item.baseMovement), ["deadlift", "good morning", "bent over row"])) return false;
+  if (includesAny(c, ["epaule", "shoulder"]) && includesAny(normalize(item.baseMovement), ["overhead press", "behind the neck"])) return false;
   if (includesAny(c, ["impact", "sans impact", "low impact"]) && item.constraintTags.includes("high_impact")) return false;
   return true;
 }
 
 function levelScore(item: ExerciseLibraryItem, requested: ExerciseLevel): number {
-  const text = normalize(`${item.baseMovement} ${item.variant}`);
-  const isAdvancedPattern = includesAny(text, ["pistol", "nordic", "toes-to-bar", "weighted", "deficit", "zercher", "jerk", "jump"]);
-  const isBeginnerFriendly = includesAny(text, ["assisted", "supported", "incline push-up", "bodyweight", "machine"]);
-
-  if (requested === "Débutant") return isBeginnerFriendly ? 10 : isAdvancedPattern ? 0 : 5;
-  if (requested === "Avancé") return isAdvancedPattern ? 10 : 5;
-  return isBeginnerFriendly ? 7 : isAdvancedPattern ? 7 : 10;
+  if (requested === item.level) return 10;
+  if (requested === "Intermédiaire" && item.level !== "Avancé") return 7;
+  if (requested === "Débutant" && item.level === "Intermédiaire") return 4;
+  if (requested === "Avancé" && item.level === "Intermédiaire") return 6;
+  return 0;
 }
 
 function equipmentScore(item: ExerciseLibraryItem, requested: ExerciseEquipment): number {
