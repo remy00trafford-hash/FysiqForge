@@ -34,10 +34,10 @@ export interface UserAnswers {
   level: "Débutant" | "Intermédiaire" | "Avancé";
   musicStyle: "Afrobeats Gym Power" | "Hip-Hop Trap Workout" | "Synthwave Pump" | "Metal / Rock Heavy" | "Electro EDM Focus";
   equipment: "Salle de sport équipée" | "Haltères + Banc maison" | "Poids du corps (Sans matériel)";
-  constraints: string; // Injuries or limitations
+  constraints: string;
   healthConsent: boolean;
   photoUrl?: string;
-  preferredWorkoutTime?: string; // Heure habituelle de séance, format "HH:MM", pour caler les rappels
+  preferredWorkoutTime?: string;
 }
 
 export interface PhotoAnalysisResult {
@@ -51,7 +51,10 @@ export interface PhotoAnalysisResult {
 }
 
 export interface ExerciseItem {
+  /** Unique selectable library entry ID. */
   id: string;
+  /** Stable movement identity shared by all prescriptions/variants. */
+  baseMovementId?: string;
   name: string;
   muscleGroup: string;
   sets: number;
@@ -147,7 +150,7 @@ export interface WorkoutLog {
   dayNumber: number;
   dayTitle: string;
   durationMinutes: number;
-  feelingRating: number; // 1-5
+  feelingRating: number;
   notes: string;
   caloriesBurned: number;
 }
