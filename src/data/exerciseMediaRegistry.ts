@@ -1,7 +1,5 @@
 // FysiqForge verified exercise media registry.
-// Production rule: no approximate movement matching. Every entry must map to an
-// exact movement key present in the master exercise library and carry a
-// commercially usable, source-documented licence.
+// Production rule: no approximate movement matching. Every entry must map to an exact movement key present in the master exercise library and carry a commercially usable, source-documented licence.
 
 export type ExerciseMedia = {
   animationKey: string;
@@ -30,8 +28,7 @@ export const VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
   sprawl: { animationKey: "sprawl", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Sprawl_Exercise.webm", source: "Wikimedia Commons", license: "CC BY-SA 4.0", attribution: "Taco Fleur", sourcePage: "https://commons.wikimedia.org/wiki/File:Sprawl_Exercise.webm", visualStatus: "verified-exact" },
   barbell_curl: { animationKey: "barbell_curl", type: "video", url: "https://www.pexels.com/video/37281095/", source: "Pexels", license: "Pexels License — free commercial use", attribution: "Ds babariya", sourcePage: "https://www.pexels.com/video/37281095/", visualStatus: "verified-exact" },
   push_up: { animationKey: "push_up", type: "video", url: "https://www.pexels.com/video/men-doing-push-ups-8480310/", source: "Pexels", license: "Pexels License — free commercial use", attribution: "Yan Krukau", sourcePage: "https://www.pexels.com/video/men-doing-push-ups-8480310/", visualStatus: "verified-exact" },
-  forty_five_degree_leg_press: { animationKey: "forty_five_degree_leg_press", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Hip_Sled_-_How_to_perform_a_45_degree_leg_press.webm", source: "Wikimedia Commons", license: "CC BY 3.0", attribution: "FitnessScape", sourcePage: "https://commons.wikimedia.org/wiki/File:Hip_Sled_-_How_to_perform_a_45_degree_leg_press.webm", visualStatus: "verified-exact" },
-  forward_lunge: { animationKey: "forward_lunge", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Forward_lunge_training.webm", source: "Wikimedia Commons", license: "CC BY-SA 4.0", attribution: "Skhulile Mthiyane", sourcePage: "https://commons.wikimedia.org/wiki/File:Forward_lunge_training.webm", visualStatus: "verified-exact" },
+  forward_lunge: { animationKey: "forward_lunge", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Strength_Training_Circuit-_Forward_Lunge.webm", source: "Wikimedia Commons", license: "Public domain (U.S. federal government)", attribution: "Army Combat Fitness Test", sourcePage: "https://commons.wikimedia.org/wiki/File:Strength_Training_Circuit-_Forward_Lunge.webm", visualStatus: "verified-exact" },
 };
 
 export const VERIFIED_MEDIA_KEYS = Object.keys(VERIFIED_EXERCISE_MEDIA);
