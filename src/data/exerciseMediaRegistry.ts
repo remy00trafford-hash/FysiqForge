@@ -1,5 +1,6 @@
 // FysiqForge verified exercise media registry.
-// Production rule: no approximate movement matching. Every entry must map to an exact movement key present in the master exercise library and carry a commercially usable, source-documented licence.
+// Production rule: no approximate movement matching. Every entry must map to an exact animationKey present in the master exercise library and carry a commercially usable, source-documented licence.
+import { MASTER_EXERCISE_DATABASE } from "./masterExerciseDatabase";
 
 export type ExerciseMedia = {
   animationKey: string;
@@ -34,5 +35,10 @@ export const VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
 };
 
 export const VERIFIED_MEDIA_KEYS = Object.keys(VERIFIED_EXERCISE_MEDIA);
+export const VERIFIED_MEDIA_COUNT = VERIFIED_MEDIA_KEYS.length;
+
+const MASTER_ANIMATION_KEYS = new Set(MASTER_EXERCISE_DATABASE.map((exercise) => exercise.animationKey));
+const INVALID_MEDIA_KEYS = VERIFIED_MEDIA_KEYS.filter((key) => !MASTER_ANIMATION_KEYS.has(key));
+if (INVALID_MEDIA_KEYS.length > 0) throw new Error(`FysiqForge media integrity error: unknown animationKey(s): ${INVALID_MEDIA_KEYS.join(", ")}`);
 
 export const getVerifiedExerciseMedia = (animationKey: string) => VERIFIED_EXERCISE_MEDIA[animationKey] ?? null;
