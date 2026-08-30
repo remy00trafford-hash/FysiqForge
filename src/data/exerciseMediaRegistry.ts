@@ -1,5 +1,6 @@
 // FysiqForge verified exercise media registry.
-// Production rule: no approximate movement matching. Every entry must map to an exact animationKey present in the master exercise library and carry a commercially usable, source-documented licence.
+// Rule: a production mapping is valid only when its animationKey exists in the
+// master library and its media/source/licence were explicitly reviewed.
 import { MASTER_EXERCISE_DATABASE } from "./masterExerciseDatabase";
 
 export type ExerciseMedia = {
@@ -10,10 +11,14 @@ export type ExerciseMedia = {
   license: string;
   attribution?: string;
   sourcePage: string;
-  visualStatus: "verified-exact" | "candidate-review";
+  visualStatus: "verified-exact";
 };
 
-export const VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
+/**
+ * Legacy verified mappings kept together so they are not confused with future
+ * batch imports. New batches must be audited separately before being merged.
+ */
+export const LEGACY_VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
   barbell_bench_press: { animationKey: "barbell_bench_press", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Bench_press_-_exercise_demonstration_video.webm", source: "Wikimedia Commons", license: "CC BY 3.0", attribution: "FitnessScape", sourcePage: "https://commons.wikimedia.org/wiki/File:Bench_press_-_exercise_demonstration_video.webm", visualStatus: "verified-exact" },
   incline_barbell_bench_press: { animationKey: "incline_barbell_bench_press", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Incline_press_-_exercise_demonstration_video.webm", source: "Wikimedia Commons", license: "CC BY 3.0", attribution: "FitnessScape", sourcePage: "https://commons.wikimedia.org/wiki/File:Incline_press_-_exercise_demonstration_video.webm", visualStatus: "verified-exact" },
   barbell_bent_over_row: { animationKey: "barbell_bent_over_row", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Bent-over_row_-_exercise_demonstration_video.webm", source: "Wikimedia Commons", license: "CC BY 3.0", attribution: "FitnessScape", sourcePage: "https://commons.wikimedia.org/wiki/File:Bent-over_row_-_exercise_demonstration_video.webm", visualStatus: "verified-exact" },
@@ -34,11 +39,22 @@ export const VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
   machine_biceps_curl: { animationKey: "machine_biceps_curl", type: "video", url: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Muscle_Strengthening_at_the_Gym_-_Bicep_Machine.webm", source: "Wikimedia Commons", license: "Public domain (U.S. federal government / CDC)", attribution: "Centers for Disease Control and Prevention", sourcePage: "https://commons.wikimedia.org/wiki/File:Muscle_Strengthening_at_the_Gym_-_Bicep_Machine.webm", visualStatus: "verified-exact" },
 };
 
+/** Combined production registry. Future batches must be reviewed before being added here. */
+export const VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
+  ...LEGACY_VERIFIED_EXERCISE_MEDIA,
+};
+
 export const VERIFIED_MEDIA_KEYS = Object.keys(VERIFIED_EXERCISE_MEDIA);
 export const VERIFIED_MEDIA_COUNT = VERIFIED_MEDIA_KEYS.length;
 
 const MASTER_ANIMATION_KEYS = new Set(MASTER_EXERCISE_DATABASE.map((exercise) => exercise.animationKey));
 const INVALID_MEDIA_KEYS = VERIFIED_MEDIA_KEYS.filter((key) => !MASTER_ANIMATION_KEYS.has(key));
-if (INVALID_MEDIA_KEYS.length > 0) throw new Error(`FysiqForge media integrity error: unknown animationKey(s): ${INVALID_MEDIA_KEYS.join(", ")}`);
+if (INVALID_MEDIA_KEYS.length > 0) {
+  throw new Error(`FysiqForge media integrity error: unknown animationKey(s): ${INVALID_MEDIA_KEYS.join(", ")}`);
+}
+
+if (VERIFIED_MEDIA_COUNT !== 18) {
+  throw new Error(`FysiqForge legacy media audit error: expected 18 verified legacy mappings, found ${VERIFIED_MEDIA_COUNT}`);
+}
 
 export const getVerifiedExerciseMedia = (animationKey: string) => VERIFIED_EXERCISE_MEDIA[animationKey] ?? null;
