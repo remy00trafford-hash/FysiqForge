@@ -9,6 +9,7 @@ export const ExerciseMediaAnimation: React.FC<Props> = ({ exerciseId = "", exerc
   const [media, setMedia] = useState<ExerciseMediaAsset | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [framesReady, setFramesReady] = useState(false);
   const [frameIndex, setFrameIndex] = useState(0);
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export const ExerciseMediaAnimation: React.FC<Props> = ({ exerciseId = "", exerc
     setMedia(null);
     setLoading(true);
     setFailed(false);
+    setFramesReady(false);
     setFrameIndex(0);
 
     findExerciseMedia(exerciseId, exerciseName)
@@ -40,29 +42,61 @@ export const ExerciseMediaAnimation: React.FC<Props> = ({ exerciseId = "", exerc
     return Array.from(new Set(urls.filter(Boolean))).slice(0, 2);
   }, [media]);
 
+  // A production animation requires BOTH exact frames. Preload frame 0 and
+  // frame 1 before displaying either one, so a broken second frame can never
+  // produce a misleading half-animation.
   useEffect(() => {
-    if (frames.length < 2 || failed) return;
+    if (frames.length !== 2 || failed) {
+      setFramesReady(false);
+      return;
+    }
 
     let alive = true;
-    const timer = window.setInterval(() => {
-      if (alive) setFrameIndex((current) => (current + 1) % frames.length);
-    }, FRAME_INTERVAL_MS);
+    setFramesReady(false);
+    const loaded = frames.map((src) => new Promise<void>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error(`Animation frame failed to load: ${src}`));
+      image.src = src;
+    }));
+
+    Promise.all(loaded)
+      .then(() => {
+        if (alive) setFramesReady(true);
+      })
+      .catch(() => {
+        if (alive) {
+          setFramesReady(false);
+          setFailed(true);
+        }
+      });
 
     return () => {
       alive = false;
-      window.clearInterval(timer);
     };
   }, [frames, failed]);
+
+  useEffect(() => {
+    if (!framesReady || frames.length !== 2 || failed) return;
+
+    const timer = window.setInterval(() => {
+      setFrameIndex((current) => (current + 1) % 2);
+    }, FRAME_INTERVAL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [framesReady, frames.length, failed]);
 
   if (loading) {
     return <div className="relative flex h-full min-h-[280px] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#070B10]" aria-busy="true" />;
   }
 
-  if (!media || failed || frames.length === 0) {
+  // Never substitute another exercise, SVG approximation, placeholder, or a
+  // single frame. Missing/broken pair = no animation, by design.
+  if (!media || failed || frames.length !== 2 || !framesReady) {
     return <div className="h-full min-h-[280px] w-full rounded-2xl bg-[#070B10]" aria-label={`Animation indisponible pour ${exerciseName}`} />;
   }
 
-  const activeFrame = frames[Math.min(frameIndex, frames.length - 1)];
+  const activeFrame = frames[frameIndex];
 
   return (
     <div className="relative flex h-full min-h-[280px] w-full items-center justify-center overflow-hidden rounded-2xl bg-[#070B10]">
@@ -70,22 +104,11 @@ export const ExerciseMediaAnimation: React.FC<Props> = ({ exerciseId = "", exerc
         <img
           src={activeFrame}
           alt={`Démonstration de ${exerciseName}`}
-          onError={() => setFailed(true)}
           className="h-full w-full object-contain p-5 sm:p-8"
           style={DUOTONE_IMAGE_STYLE}
           loading="eager"
           decoding="async"
         />
-        {frames.length > 1 && (
-          <img
-            src={frames[(frameIndex + 1) % frames.length]}
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 h-full w-full object-contain p-5 opacity-0 sm:p-8"
-            loading="eager"
-            decoding="async"
-          />
-        )}
         <div className="pointer-events-none absolute inset-0" style={DUOTONE_OVERLAY_STYLE} />
       </div>
       <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
