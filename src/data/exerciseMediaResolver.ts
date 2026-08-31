@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { MASTER_EXERCISE_DATABASE } from "./masterExerciseDatabase";
 import { getVerifiedExerciseMedia, type ExerciseMedia } from "./exerciseMediaRegistry";
 
-export type ExerciseMediaSource = "free-exercise-db" | "Wikimedia Commons" | "Pexels";
+export type ExerciseMediaSource = "free-exercise-db" | "RepDB" | "Wikimedia Commons" | "Pexels";
 export type ExerciseMediaAsset = {
   id: string;
   name: string;
@@ -18,9 +18,6 @@ export const DUOTONE_OVERLAY_STYLE: CSSProperties = { background: "linear-gradie
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-function slug(value: string) {
-  return normalize(value).replace(/ /g, "_");
 }
 
 function resolveMasterExercise(exerciseId = "", exerciseName = "") {
@@ -40,8 +37,10 @@ function verifiedToAsset(exerciseName: string, media: ExerciseMedia): ExerciseMe
       name: exerciseName,
       images: [media.frame0Url, media.frame1Url],
       score: 1000,
-      source: "free-exercise-db",
-      attribution: "Free Exercise DB — Unlicense",
+      source: media.source === "RepDB" ? "RepDB" : "free-exercise-db",
+      attribution: media.source === "RepDB"
+        ? "RepDB — Free tier, commercial in-app use with attribution"
+        : "Free Exercise DB — Unlicense",
     };
   }
   return {
