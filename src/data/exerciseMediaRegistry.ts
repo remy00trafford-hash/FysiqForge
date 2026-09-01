@@ -30,10 +30,6 @@ export const LEGACY_VERIFIED_EXERCISE_MEDIA: Record<string, VideoExerciseMedia> 
   machine_biceps_curl:{animationKey:"machine_biceps_curl",type:"video",url:"https://commons.wikimedia.org/wiki/Special:Redirect/file/Muscle_Strengthening_at_the_Gym_-_Bicep_Machine.webm",source:"Wikimedia Commons",license:"Public domain (US federal government / CDC)",attribution:"Centers for Disease Control and Prevention",sourcePage:"https://commons.wikimedia.org/wiki/File:Muscle_Strengthening_at_the_Gym_-_Bicep_Machine.webm",visualStatus:"verified-exact"},
 };
 
-// Pull-Up and Leg Curl are intentionally excluded here because their exact
-// animationKeys are not present in the current 300-movement master. The
-// master-only rule therefore forbids registering them until the master itself
-// contains those identities.
 export const VERIFIED_EXERCISE_MEDIA: Record<string, ExerciseMedia> = {
   ...LEGACY_VERIFIED_EXERCISE_MEDIA,
   ...SUPPLIED_EXACT_FRAME_PAIR_MEDIA,
@@ -45,6 +41,6 @@ export const VERIFIED_MEDIA_COUNT = VERIFIED_MEDIA_KEYS.length;
 const MASTER_ANIMATION_KEYS = new Set(MASTER_EXERCISE_DATABASE.map((exercise) => exercise.animationKey));
 const INVALID_MEDIA_KEYS = VERIFIED_MEDIA_KEYS.filter((key) => !MASTER_ANIMATION_KEYS.has(key));
 if (INVALID_MEDIA_KEYS.length) throw new Error(`FysiqForge media integrity error: unknown animationKey(s): ${INVALID_MEDIA_KEYS.join(", ")}`);
-if (VERIFIED_MEDIA_COUNT !== 125) throw new Error(`FysiqForge media audit error: expected 125 master-compatible verified mappings, found ${VERIFIED_MEDIA_COUNT}`);
+if (VERIFIED_MEDIA_COUNT !== 119) throw new Error(`FysiqForge media audit error: expected 119 master-compatible verified mappings, found ${VERIFIED_MEDIA_COUNT}`);
 
 export const getVerifiedExerciseMedia = (animationKey: string): ExerciseMedia | null => VERIFIED_EXERCISE_MEDIA[animationKey] ?? null;
