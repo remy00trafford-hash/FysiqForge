@@ -1,6 +1,6 @@
 // Exact frame-pair media rebuilt from the supplied Free Exercise DB lists.
-// Free Exercise DB uses .jpg frames (0.jpg + 1.jpg), not .png.
 // The frontend alternates frame 0 and frame 1 to produce the visible loop.
+// IMPORTANT: the current Free Exercise DB repository stores these exercise frames as .jpg.
 // Source: https://github.com/yuhonas/free-exercise-db | License: Unlicense
 import { MASTER_EXERCISE_DATABASE } from "./masterExerciseDatabase";
 
