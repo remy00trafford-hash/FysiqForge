@@ -30,7 +30,7 @@ function resolveMasterExercise(exerciseId = "", exerciseName = "") {
   return MASTER_EXERCISE_DATABASE.find((exercise) => normalize(exercise.name) === wanted) ?? null;
 }
 
-function verifiedToAsset(exerciseName: string, media: ExerciseMedia): ExerciseMediaAsset {
+export function verifiedToAsset(exerciseName: string, media: ExerciseMedia): ExerciseMediaAsset {
   if (media.type === "image-pair") {
     return {
       id: `verified-${media.animationKey}`,
@@ -54,11 +54,6 @@ function verifiedToAsset(exerciseName: string, media: ExerciseMedia): ExerciseMe
   };
 }
 
-/**
- * Production rule: the master library is the only exercise source.
- * Media is returned only when the exact master's animationKey has a verified mapping.
- * There is deliberately NO fuzzy exercise search and NO cross-exercise fallback.
- */
 export async function findExerciseMedia(exerciseId?: string, exerciseName?: string): Promise<ExerciseMediaAsset | null> {
   const master = resolveMasterExercise(exerciseId, exerciseName);
   if (!master) return null;
