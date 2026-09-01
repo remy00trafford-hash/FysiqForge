@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "purpose": "Verified exact frame-pair media for FysiqForge",
+  "source": "https://github.com/yuhonas/free-exercise-db",
+  "license": "Public Domain (Unlicense)",
+  "qualityGate": [
+    "exact exercise",
+    "frame 0",
+    "frame 1",
+    "commercially usable source",
+    "clear visual",
+    "exact animationKey",
+    "no fallback"
+  ],
+  "exercises": [
+    {"exerciseName":"Cable Chest Fly","animationKey":"cable_chest_fly","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Flat_Bench_Cable_Flyes/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Flat_Bench_Cable_Flyes/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Flat_Bench_Cable_Flyes.json","qualityGatePassed":true},
+    {"exerciseName":"Wide Push-Up","animationKey":"wide_push_up","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Push-Up_Wide/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Push-Up_Wide/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Push-Up_Wide.json","qualityGatePassed":true},
+    {"exerciseName":"Close-Grip Push-Up","animationKey":"close_grip_push_up","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Push-Ups_-_Close_Triceps_Position/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Push-Ups_-_Close_Triceps_Position/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Push-Ups_-_Close_Triceps_Position.json","qualityGatePassed":true},
+    {"exerciseName":"Triceps Dip","animationKey":"triceps_dip","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dips_-_Triceps_Version/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dips_-_Triceps_Version/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Dips_-_Triceps_Version.json","qualityGatePassed":true},
+    {"exerciseName":"Bench Dip","animationKey":"bench_dip","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bench_Dips/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bench_Dips/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Bench_Dips.json","qualityGatePassed":true},
+    {"exerciseName":"Dumbbell Lying Triceps Extension","animationKey":"dumbbell_lying_triceps_extension","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Lying_Dumbbell_Tricep_Extension/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Lying_Dumbbell_Tricep_Extension/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Lying_Dumbbell_Tricep_Extension.json","qualityGatePassed":true},
+    {"exerciseName":"Dumbbell Kickback","animationKey":"dumbbell_kickback","frame0Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Tricep_Dumbbell_Kickback/0.jpg","frame1Url":"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Tricep_Dumbbell_Kickback/1.jpg","source":"Free Exercise DB (yuhonas)","license":"Public Domain (Unlicense)","sourceFile":"exercises/Tricep_Dumbbell_Kickback.json","qualityGatePassed":true}
+  ]
+}
