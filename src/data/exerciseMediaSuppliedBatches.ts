@@ -4,17 +4,7 @@
 // Source: https://github.com/yuhonas/free-exercise-db | License: Unlicense
 import { MASTER_EXERCISE_DATABASE } from "./masterExerciseDatabase";
 
-export type FramePairMedia = {
-  animationKey: string;
-  type: "image-pair";
-  frame0Url: string;
-  frame1Url: string;
-  source: "Free Exercise DB";
-  license: "Unlicense";
-  sourcePage: string;
-  visualStatus: "verified-exact";
-  qualityGatePassed: true;
-};
+export type FramePairMedia = { animationKey:string; type:"image-pair"; frame0Url:string; frame1Url:string; source:"Free Exercise DB"; license:"Unlicense"; sourcePage:string; visualStatus:"verified-exact"; qualityGatePassed:true; };
 
 const PAIRS: Array<[string,string]> = [
 ["push_press","Barbell_Push_Press"],["seated_barbell_overhead_press","Barbell_Seated_Overhead_Press"],["standing_dumbbell_shoulder_press","Dumbbell_Shoulder_Press"],["seated_dumbbell_shoulder_press","Dumbbell_Seated_Shoulder_Press"],["arnold_press","Dumbbell_Arnold_Press"],["dumbbell_lateral_raise","Dumbbell_Lateral_Raise"],["seated_dumbbell_lateral_raise","Dumbbell_Seated_Lateral_Raise"],["cable_lateral_raise","Cable_Lateral_Raise"],["dumbbell_front_raise","Dumbbell_Front_Raise"],["cable_front_raise","Cable_Front_Raise"],["rear_delt_dumbbell_fly","Dumbbell_Rear_Delt_Fly"],["cable_rear_delt_fly","Cable_Reverse_Fly"],["face_pull","Cable_Face_Pull"],["machine_shoulder_press","Lever_Shoulder_Press"],
@@ -24,18 +14,9 @@ const PAIRS: Array<[string,string]> = [
 ["box_jump","Box_Jump"],["broad_jump","Standing_Long_Jump"],["tuck_jump","Tuck_Jump"],["jumping_lunge","Split_Jump"],["skater_jump","Skater_Hop"],["mountain_climber","Mountain_Climber"],["bear_crawl","Bear_Crawl"],["crab_walk","Crab_Walk"],["inchworm","Inchworm"],["jumping_jack","Jumping_Jack"],
 ["march_in_place","Marching_In_Place"],["arm_circles","Arm_Circles"],["leg_swings_front_to_back","Front_Leg_Swings"],["leg_swings_side_to_side","Side_Leg_Swings"],["inchworm_walkout","Inchworm"],["scapular_push_up","Scapula_Push_Up"],["glute_bridge_warm_up","Glute_Bridge"],["bird_dog_warm_up","Bird_Dog"],["jumping_jack_warm_up","Jumping_Jack"],["cat_cow","Cat_Cow"],["childs_pose","Childs_Pose"],["worlds_greatest_stretch","Worlds_Greatest_Stretch"],["90_90_hip_rotation","90_90_Stretch"],["half_kneeling_hip_flexor_stretch","Kneeling_Hip_Flexor_Stretch"]
 ];
-
-const MASTER_KEYS = new Set(MASTER_EXERCISE_DATABASE.map((e) => e.animationKey));
-const INVALID = PAIRS.map(([k]) => k).filter((k) => !MASTER_KEYS.has(k));
-if (INVALID.length) throw new Error(`FysiqForge supplied media integrity error: ${INVALID.join(", ")}`);
-
-export const SUPPLIED_EXACT_FRAME_PAIR_MEDIA: Record<string, FramePairMedia> = Object.fromEntries(PAIRS.map(([animationKey,dir]) => [animationKey, {
-  animationKey, type: "image-pair",
-  frame0Url: `https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/${dir}/0.jpg`,
-  frame1Url: `https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/${dir}/1.jpg`,
-  source: "Free Exercise DB", license: "Unlicense", sourcePage: "https://github.com/yuhonas/free-exercise-db",
-  visualStatus: "verified-exact", qualityGatePassed: true,
-}]));
-
-export const SUPPLIED_EXACT_FRAME_PAIR_COUNT = Object.keys(SUPPLIED_EXACT_FRAME_PAIR_MEDIA).length;
-if (SUPPLIED_EXACT_FRAME_PAIR_COUNT !== 98) throw new Error(`Expected 98 master-compatible additions, found ${SUPPLIED_EXACT_FRAME_PAIR_COUNT}`);
+const MASTER_KEYS=new Set(MASTER_EXERCISE_DATABASE.map(e=>e.animationKey));
+const INVALID=PAIRS.map(([k])=>k).filter(k=>!MASTER_KEYS.has(k));
+if(INVALID.length)throw new Error(`FysiqForge supplied media integrity error: ${INVALID.join(", ")}`);
+export const SUPPLIED_EXACT_FRAME_PAIR_MEDIA:Record<string,FramePairMedia>=Object.fromEntries(PAIRS.map(([animationKey,dir])=>[animationKey,{animationKey,type:"image-pair",frame0Url:`https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/${dir}/0.jpg`,frame1Url:`https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/${dir}/1.jpg`,source:"Free Exercise DB",license:"Unlicense",sourcePage:"https://github.com/yuhonas/free-exercise-db",visualStatus:"verified-exact",qualityGatePassed:true}]));
+export const SUPPLIED_EXACT_FRAME_PAIR_COUNT=Object.keys(SUPPLIED_EXACT_FRAME_PAIR_MEDIA).length;
+if(SUPPLIED_EXACT_FRAME_PAIR_COUNT!==98)throw new Error(`Expected 98 master-compatible additions, found ${SUPPLIED_EXACT_FRAME_PAIR_COUNT}`);
