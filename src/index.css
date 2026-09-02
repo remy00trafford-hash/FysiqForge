@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -26,7 +27,7 @@ html, body {
   color: var(--ff-text);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: none;
-  font-family: "Poppins", "Inter", "Segoe UI", sans-serif;
+  font-family: "Poppins", "Inter", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -38,12 +39,16 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; f
 button { touch-action: manipulation; }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Poppins", "Inter", "Segoe UI", sans-serif;
+  font-family: "Space Grotesk", "Poppins", "Inter", sans-serif;
   letter-spacing: -0.025em;
   text-wrap: balance;
 }
-
 h1, h2 { max-width: 22ch; }
+
+/* Make secondary text readable instead of defaulting to weak gray. */
+.text-gray-300 { color: #e7e7ea !important; }
+.text-gray-400 { color: #c4c4cc !important; }
+.text-gray-500 { color: #a1a1aa !important; }
 
 /* Premium utility layer: subtle depth, restrained borders and no decorative overload. */
 .ff-glass {
