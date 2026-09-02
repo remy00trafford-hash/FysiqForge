@@ -1,15 +1,56 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
-html, body { margin:0; padding:0; min-height:100%; width:100%; overflow-x:hidden!important; overflow-y:auto!important; scroll-behavior:smooth; background-color:#0D0D11; color:#fff; -webkit-overflow-scrolling:touch; overscroll-behavior-x:none; font-family:"Aptos","Segoe UI","Helvetica Neue",Arial,sans-serif; font-synthesis:none; }
+:root {
+  --ff-bg: #070708;
+  --ff-surface: #0d0d10;
+  --ff-surface-2: #121216;
+  --ff-text: #ffffff;
+  --ff-muted: #b5b5bd;
+  --ff-subtle: #85858f;
+  --ff-accent: #ff5a1f;
+  --ff-accent-strong: #ff6a2a;
+  --ff-line: rgba(255,255,255,.12);
+  --ff-line-strong: rgba(255,255,255,.18);
+  --ff-radius: 18px;
+}
+
+html, body { margin:0; padding:0; min-height:100%; width:100%; overflow-x:hidden!important; overflow-y:auto!important; scroll-behavior:smooth; background:var(--ff-bg); color:var(--ff-text); -webkit-overflow-scrolling:touch; overscroll-behavior-x:none; font-family:"Poppins","Inter",sans-serif; font-synthesis:none; text-rendering:optimizeLegibility; }
 body { padding-top:env(safe-area-inset-top,0px); }
 #root { min-height:100vh; width:100%; overflow-x:clip; overflow-y:visible; display:flex; flex-direction:column; }
 main { min-width:0; width:100%; }
 button,a,input,select,textarea { -webkit-tap-highlight-color:transparent; font:inherit; }
 button { touch-action:manipulation; }
-h1,h2,h3,h4,h5,h6 { font-family:"Aptos Display","Segoe UI","Helvetica Neue",Arial,sans-serif; letter-spacing:-0.015em; }
+h1,h2,h3,h4,h5,h6 { font-family:"Space Grotesk","Poppins","Inter",sans-serif; letter-spacing:-.025em; text-wrap:balance; }
+h1,h2 { max-width:22ch; }
+
+/* Existing Tailwind palette: premium contrast without changing component structure. */
+.bg-\[\#0D0D11\] { background:#070708!important; }
+.bg-\[\#121218\] { background:#0b0b0e!important; }
+.bg-\[\#16161E\] { background:#101014!important; }
+.bg-\[\#1A1A24\] { background:#131318!important; }
+.text-gray-300 { color:#e7e7ea!important; }
+.text-gray-400 { color:#c4c4cc!important; }
+.text-gray-500 { color:#a1a1aa!important; }
+[class*="border-white\/10"] { border-color:rgba(255,255,255,.12)!important; }
+[class*="border-white\/15"] { border-color:rgba(255,255,255,.14)!important; }
+
+/* Keep glow atmospheric, not fluorescent. */
+[class*="blur-3xl"] { opacity:.52; }
+[class*="shadow-2xl"] { --tw-shadow-color:rgba(0,0,0,.35); }
+
+.ff-glass { background:rgba(13,13,16,.72); border:1px solid var(--ff-line); backdrop-filter:blur(18px) saturate(120%); -webkit-backdrop-filter:blur(18px) saturate(120%); }
+.ff-premium-card { background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.018)); border:1px solid var(--ff-line); border-radius:var(--ff-radius); box-shadow:0 20px 60px rgba(0,0,0,.24); }
+.ff-premium-card:hover { border-color:var(--ff-line-strong); }
+.ff-depth-hover { transition:transform .35s cubic-bezier(.16,1,.3,1),border-color .35s ease,box-shadow .35s ease; }
+.ff-depth-hover:hover { transform:translateY(-3px); box-shadow:0 24px 70px rgba(0,0,0,.32); }
+.ff-accent-text { color:var(--ff-accent); }
+.ff-muted { color:var(--ff-muted); }
 
 @media (max-width:639px) {
-  header { padding-left:max(.5rem,env(safe-area-inset-left,0px)); padding-right:max(.5rem,env(safe-area-inset-right,0px)); }
+  body { padding-left:max(.5rem,env(safe-area-inset-left,0px)); padding-right:max(.5rem,env(safe-area-inset-right,0px)); }
+  #root { width:calc(100% - 1rem); margin:0 auto; }
+  header { padding-left:0!important; padding-right:0!important; }
   header > div { gap:.35rem!important; }
   header > div > button:first-child { min-width:0; flex:1 1 auto; overflow:hidden; }
   header > div > button:first-child > div:last-child { min-width:0; overflow:hidden; }
@@ -22,7 +63,6 @@ h1,h2,h3,h4,h5,h6 { font-family:"Aptos Display","Segoe UI","Helvetica Neue",Aria
   header > div > div:last-child > div:first-child > button:nth-child(2),header > div > div:last-child > div:first-child > button:nth-child(1) { display:none; }
   header > div > div:last-child > div:last-child { max-width:calc(100vw - 1rem); }
 
-  /* GuidedWorkoutPlayer: use the real mobile viewport and allow the full workout UI to scroll. */
   .fixed.inset-0.z-50 { height:100dvh!important; min-height:100dvh!important; max-height:100dvh!important; overflow:hidden!important; }
   .fixed.inset-0.z-50 > header { min-height:58px; padding-top:max(.55rem,env(safe-area-inset-top,0px)); padding-bottom:.55rem; }
   .fixed.inset-0.z-50 > header h2 { max-width:calc(100vw - 170px)!important; white-space:normal!important; overflow:visible!important; text-overflow:clip!important; line-height:1.2!important; overflow-wrap:anywhere; }
@@ -48,7 +88,19 @@ h1,h2,h3,h4,h5,h6 { font-family:"Aptos Display","Segoe UI","Helvetica Neue",Aria
   .fixed.inset-0.z-50 > main { min-height:0!important; overflow-y:auto!important; align-items:stretch!important; }
 }
 
-::-webkit-scrollbar{width:10px} ::-webkit-scrollbar-track{background:#0D0D11} ::-webkit-scrollbar-thumb{background:#2A2A38;border-radius:5px} ::-webkit-scrollbar-thumb:hover{background:#FF5500}
-@keyframes fadeSlideIn{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes stageImageFade{from{opacity:.3;transform:scale(1.04)}to{opacity:1;transform:scale(1)}}
-.animate-fade-slide{animation:fadeSlideIn .35s cubic-bezier(.16,1,.3,1) forwards}.animate-image-fade{animation:stageImageFade .4s cubic-bezier(.16,1,.3,1) forwards}.safe-bottom{padding-bottom:env(safe-area-inset-bottom,0px)}.safe-top{padding-top:env(safe-area-inset-top,0px)}
+::-webkit-scrollbar { width:10px; }
+::-webkit-scrollbar-track { background:var(--ff-bg); }
+::-webkit-scrollbar-thumb { background:rgba(255,255,255,.16); border-radius:5px; }
+::-webkit-scrollbar-thumb:hover { background:var(--ff-accent); }
+
+@keyframes fadeSlideIn { from { opacity:0; transform:translateY(16px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes stageImageFade { from { opacity:.3; transform:scale(1.04); } to { opacity:1; transform:scale(1); } }
+@keyframes ffFloat { 0%,100% { transform:translate3d(0,0,0); } 50% { transform:translate3d(0,-4px,0); } }
+.animate-fade-slide { animation:fadeSlideIn .35s cubic-bezier(.16,1,.3,1) forwards; }
+.animate-image-fade { animation:stageImageFade .4s cubic-bezier(.16,1,.3,1) forwards; }
+.safe-bottom { padding-bottom:env(safe-area-inset-bottom,0px); }
+.safe-top { padding-top:env(safe-area-inset-top,0px); }
+
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; }
+}
