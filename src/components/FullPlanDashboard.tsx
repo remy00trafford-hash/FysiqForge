@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { TrainingPlan, WorkoutLog, ExerciseItem } from "../types";
 import { WorkoutAudioPlayer } from "./WorkoutAudioPlayer";
 import { GuidedWorkoutPlayer } from "./GuidedWorkoutPlayer";
+import { ExercisePoseIllustration, classifyExercisePose } from "./ExercisePoseIllustration";
 import { PostWorkoutBilanModal } from "./PostWorkoutBilanModal";
 import { EquipmentCheckModal } from "./EquipmentCheckModal";
 import { FaqAndSupportModal } from "./FaqAndSupportModal";
@@ -471,10 +472,12 @@ export const FullPlanDashboard: React.FC<FullPlanDashboardProps> = ({
                       onClick={() => handleStartGuidedWorkout(idx)}
                       className="h-44 rounded-xl overflow-hidden relative cursor-pointer"
                     >
-                      <img
-                        src={ex.illustrationUrl}
-                        alt={ex.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      <ExercisePoseIllustration
+                        pose={classifyExercisePose(ex.name, ex.muscleGroup)}
+                        exerciseId={ex.id}
+                        exerciseName={ex.name}
+                        muscleGroup={translateMuscleGroup(ex.muscleGroup, language)}
+                        reps={`${ex.sets} × ${ex.reps}`}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                       <span className="absolute top-2 left-2 bg-[#FF5500] text-white text-[10px] font-black px-2 py-0.5 rounded shadow">
