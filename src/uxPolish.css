@@ -1,0 +1,86 @@
+/* FysiqForge UX polish layer — intentionally preserves the existing color system. */
+
+html {
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a[role="button"],
+[role="button"] {
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+a[role="button"],
+[role="button"] {
+  transition-property: transform, box-shadow, opacity, filter;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+button:not(:disabled):active,
+a[role="button"]:active,
+[role="button"]:active {
+  transform: scale(0.985);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+img {
+  image-rendering: auto;
+}
+
+/* Prevent accidental horizontal overflow on narrow phones. */
+#root,
+main {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+/* Keep dense dashboard content readable on compact screens. */
+@media (max-width: 640px) {
+  button,
+  a[role="button"],
+  [role="button"] {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
