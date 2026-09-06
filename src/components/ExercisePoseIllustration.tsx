@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Dumbbell, ImageOff } from "lucide-react";
+import { findVerifiedExerciseMedia } from "../data/verifiedExerciseMedia";
 
 export type PoseCategory = "push" | "pull" | "squat" | "lunge" | "core" | "hinge" | "cardio" | "stretch" | "shoulder" | "arm";
 
@@ -12,24 +14,8 @@ export function classifyExercisePose(name: string, muscleGroup?: string): PoseCa
   if (/overhead|shoulder press|lateral raise|face pull|shrug|viking|y raise/.test(text)) return "shoulder";
   if (/curl|biceps|triceps|pushdown|extension|kickback/.test(text)) return "arm";
   if (/row|rowing|pulldown|traction|pull-up|pull up/.test(text)) return "pull";
-  if (/bench|incline|push-up|push up|pompe|dip|chest|fly|fly|press/.test(text)) return "push";
+  if (/bench|incline|push-up|push up|pompe|dip|chest|fly|press/.test(text)) return "push";
   return "stretch";
-}
-
-type FramePair = { frame0: string; frame1: string };
-
-const VERIFIED_FRAME_PAIRS: Array<{ test: RegExp; frames: FramePair }> = [
-  { test: /cable chest fly/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Cable_Bench_Press/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Cable_Bench_Press/1.png" } },
-  { test: /wide push[- ]?up/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Wide_Hand_Push-Up/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Wide_Hand_Push-Up/1.png" } },
-  { test: /close[- ]grip push[- ]?up/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Close-grip_push-up/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Close-grip_push-up/1.png" } },
-  { test: /triceps dip/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dips_-_Triceps_Version/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dips_-_Triceps_Version/1.png" } },
-  { test: /bench dip/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bench_Dip_-_Triceps_Version/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Bench_Dip_-_Triceps_Version/1.png" } },
-  { test: /dumbbell lying triceps extension/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dumbbell_Lying_Triceps_Extension/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dumbbell_Lying_Triceps_Extension/1.png" } },
-  { test: /dumbbell kickback/i, frames: { frame0: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dumbbell_Kickback/0.png", frame1: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/Dumbbell_Kickback/1.png" } }
-];
-
-function resolveFrames(exerciseName: string): FramePair | undefined {
-  return VERIFIED_FRAME_PAIRS.find(({ test }) => test.test(exerciseName))?.frames;
 }
 
 interface ExercisePoseIllustrationProps {
@@ -40,57 +26,65 @@ interface ExercisePoseIllustrationProps {
   reps?: string;
 }
 
-export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({ pose, exerciseName = "Exercice", muscleGroup = "Mouvement", reps }) => {
-  const frames = useMemo(() => resolveFrames(exerciseName), [exerciseName]);
-  const [frame, setFrame] = useState(0);
+export const ExercisePoseIllustration: React.FC<ExercisePoseIllustrationProps> = ({
+  exerciseId,
+  exerciseName = "Exercice",
+  muscleGroup = "Mouvement",
+  reps
+}) => {
+  const media = useMemo(() => findVerifiedExerciseMedia(exerciseId, exerciseName), [exerciseId, exerciseName]);
+  const [frame, setFrame] = useState<0 | 1>(0);
+  const [mediaError, setMediaError] = useState(false);
 
   useEffect(() => {
-    if (!frames) return;
+    setFrame(0);
+    setMediaError(false);
+  }, [media?.frame0Url, media?.frame1Url]);
+
+  useEffect(() => {
+    if (!media || mediaError) return;
     const timer = window.setInterval(() => setFrame((value) => value === 0 ? 1 : 0), 650);
     return () => window.clearInterval(timer);
-  }, [frames]);
+  }, [media, mediaError]);
 
-  if (frames) {
-    return (
-      <div className="absolute inset-0 bg-[#0E0E14] flex items-center justify-center overflow-hidden">
-        <img
-          src={frame === 0 ? frames.frame0 : frames.frame1}
-          alt={`${exerciseName} — animation mouvement`}
-          className="w-full h-full object-contain select-none"
-          loading="lazy"
-          draggable={false}
-        />
-        <div className="absolute bottom-2 right-2 rounded-md bg-black/65 border border-white/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-white/80">
-          Animation
-        </div>
-      </div>
-    );
-  }
-
-  const motion = {
-    push: "translateY(6px) rotate(-3deg)",
-    pull: "translateY(-2px) rotate(4deg)",
-    squat: "translateY(9px)",
-    lunge: "translateX(7px) rotate(-5deg)",
-    hinge: "translateY(7px) rotate(10deg)",
-    core: "translateY(4px) rotate(-8deg)",
-    cardio: "translateY(-7px)",
-    stretch: "translateY(2px) rotate(-10deg)",
-    shoulder: "translateY(-3px)",
-    arm: "translateY(0)"
-  }[pose];
+  const showMedia = Boolean(media && !mediaError);
 
   return (
-    <div className="absolute inset-0 bg-gradient-to-br from-[#171720] to-[#0B0B10] flex items-center justify-center overflow-hidden">
-      <div className="relative w-24 h-36 animate-pulse" style={{ transform: motion }}>
-        <div className="absolute left-1/2 top-1 w-7 h-7 -translate-x-1/2 rounded-full border-2 border-white/75" />
-        <div className="absolute left-1/2 top-9 h-16 w-2 -translate-x-1/2 rounded-full bg-white/75" />
-        <div className="absolute left-1/2 top-12 h-2 w-16 -translate-x-1/2 rounded-full bg-white/60" />
-        <div className="absolute left-1/2 top-[72px] h-14 w-2 -translate-x-1/2 rounded-full bg-white/65" />
-        <div className="absolute left-[34px] top-[72px] h-14 w-2 rounded-full bg-white/55 rotate-[12deg] origin-top" />
-        <div className="absolute right-[34px] top-[72px] h-14 w-2 rounded-full bg-white/55 -rotate-[12deg] origin-top" />
-      </div>
-      <span className="absolute bottom-2 right-2 rounded-md bg-black/65 border border-white/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-white/60">Mouvement</span>
+    <div className="absolute inset-0 overflow-hidden bg-[#0E0E14]">
+      {showMedia && media ? (
+        <>
+          <img
+            key={frame}
+            src={frame === 0 ? media.frame0Url : media.frame1Url}
+            alt={`${exerciseName} — démonstration du mouvement`}
+            className="absolute inset-0 h-full w-full object-contain select-none transition-opacity duration-300"
+            loading="lazy"
+            draggable={false}
+            onError={() => setMediaError(true)}
+          />
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#0E0E14]/90 to-transparent pointer-events-none" />
+          <div className="absolute left-2.5 top-2.5 rounded-full border border-white/10 bg-black/65 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/80 backdrop-blur-sm">Démonstration</div>
+          <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-end justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-semibold text-white">{exerciseName}</p>
+              <p className="truncate text-[9px] text-white/55">{muscleGroup}</p>
+            </div>
+            {reps ? <span className="shrink-0 rounded-full border border-white/10 bg-black/60 px-2 py-1 text-[9px] font-bold text-white/80">{reps}</span> : null}
+          </div>
+        </>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
+          <div className="max-w-[180px] space-y-3">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+              {mediaError ? <ImageOff className="h-5 w-5 text-white/35" /> : <Dumbbell className="h-5 w-5 text-white/35" />}
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-white/80">Démonstration indisponible</p>
+              <p className="mt-1 text-[9px] leading-relaxed text-white/40">Aucune animation validée n'est disponible pour cet exercice.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
