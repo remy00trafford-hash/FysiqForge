@@ -1,4 +1,5 @@
 import type { ExerciseMediaAsset } from "./exerciseMediaResolver";
+import { CANONICAL_MOTION_MAP, CANONICAL_ASSET_SLUGS } from "./verified127ExerciseMappings";
 
 type WorkoutGuideFrame={index:number;path:string;format?:string};
 type WorkoutGuideExercise={id:string;slug:string;name:string;equipment?:string;primaryMuscle?:string;secondaryMuscles?:string[];frames:WorkoutGuideFrame[]};
@@ -174,8 +175,10 @@ async function loadManifest(){
 
 export async function findWorkoutGuideMedia(exerciseName:string):Promise<ExerciseMediaAsset|null>{
   const catalog=await loadManifest();
-  const ranked=catalog.map(item=>({item,score:score(exerciseName,item)})).filter(x=>x.item.frames?.length>=2&&x.score>=700).sort((a,b)=>b.score-a.score);
-  const hit=ranked[0];
+  const canonical=CANONICAL_MOTION_MAP[exerciseName];
+  const canonicalSlug=canonical?CANONICAL_ASSET_SLUGS[canonical]:undefined;
+  const exact=canonicalSlug?catalog.find(item=>normalize(item.slug)===normalize(canonicalSlug)||normalize(item.name)===normalize(canonicalSlug)):undefined;
+  const hit=exact?{item:exact,score:1000}:catalog.map(item=>({item,score:score(exerciseName,item)})).filter(x=>x.item.frames?.length>=2&&x.score>=700).sort((a,b)=>b.score-a.score)[0];
   if(!hit)return null;
   const frames=hit.item.frames.slice().sort((a,b)=>a.index-b.index).slice(0,3).map(frame=>{
     const png=frame.path.replace(/\.svg$/i,".png");
