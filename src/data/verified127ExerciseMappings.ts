@@ -30,7 +30,7 @@ export const CANONICAL_ASSET_SLUGS:Record<string,string>={
   "Ankle Mobility":"wall-calf-stretch","Shoulder Dislocate":"cross-body-shoulder-stretch",
   "Chest Stretch":"doorway-chest-stretch","Couch Stretch":"standing-quad-stretch",
   "Pigeon Stretch":"kneeling-hip-flexor-stretch","Frog Stretch":"butterfly-stretch",
-  "Cable Lateral Raise":"cable-lateral-raise","Dumbbell Curl":"dumbbell-curl","Dumbbell Triceps Extension":"dumbbell-overhead-tricep-extension"
+  "Cable Lateral Raise":"cable-lateral-raise","Dumbbell Curl":"bicep-curl","Dumbbell Triceps Extension":"dumbbell-overhead-tricep-extension"
 };
 
 export const CANONICAL_MOTION_MAP:Record<string,string>=Object.fromEntries(VERIFIED_127_EXERCISE_MAPPINGS.map(x=>[x.exerciseName,x.canonicalTarget]));
