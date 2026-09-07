@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-export type ExerciseMediaSource = "free-exercise-db" | "wger.de";
+export type ExerciseMediaSource = "free-exercise-db" | "wger.de" | "workout-guide";
 export type ExerciseMediaAsset = { id:string; name:string; images:string[]; equipment?:string; primaryMuscles?:string[]; score:number; source:ExerciseMediaSource; attribution?:string };
 type FreeExerciseRecord={id:string;name:string;equipment?:string;primaryMuscles?:string[];secondaryMuscles?:string[];images?:string[]};
 type WgerImage={image?:string;is_main?:boolean};
